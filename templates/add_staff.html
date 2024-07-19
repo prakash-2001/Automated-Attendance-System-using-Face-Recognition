@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>{{ page_title }}</title>
+    <style>
+        .workspace {
+            position: absolute;
+            width: 81.1%;
+            height: 89%;
+            background-color: rgb(215, 209, 226);
+            margin-left: 18.5%;
+            margin-top: 5%;
+            border-radius: 2px 2px 2px 2px;
+        }
+
+        .header {
+            margin-top: 2%;
+            font-size: 30px;
+            font-weight: bold;
+            text-align: left;
+        }
+
+        #login-form {
+            position:relative;
+            top: 5%;
+            left: 0;
+            width: 90%;
+        }
+
+        .inpt_box {
+            margin-top: 5%;
+            padding-top: 10%;
+        }
+
+        .inpt_box input {
+            width: 70%;
+            /* Adjust the width as needed */
+            box-sizing: border-box;
+            border-radius: 20px 20px 20px 20px;
+            padding: 10px;
+        }
+
+        .cam_btn
+        {
+            margin-left: 6%;
+            margin-top: 20%;
+        }
+        .cap_btn {
+            margin-top: 15%;
+            margin-left: 6%;
+        }
+
+        .cam_btn button{
+            width: 45%;
+            box-sizing: border-box;
+            border-radius: 8px 8px 8px 8px;
+            padding: 10px;
+            background-color:  rgb(40, 13, 75);
+            color: white;
+        }
+
+        .cam_btn button:visited{
+            background-color: rgb(20, 52, 168);
+        }
+        .cap_btn button {
+            width: 45%;
+            box-sizing: border-box;
+            border-radius: 8px 8px 8px 8px;
+            padding: 10px;
+            background-color: rgb(33, 128, 41);
+            color: white;
+            
+        }
+
+        .cap_btn button:focus {
+            background-color: rgb(237, 175, 60);
+
+        }
+
+        .data_set {
+            margin-top: 2%;
+            background-color: rgb(118, 118, 148);
+            width: 30%;
+            margin-left: 35%;
+            min-height: 75%;
+            border-radius:  10px 10px 10px 10px;
+            /* Align to the left */
+        }
+        .haad{
+            padding-top: 10%;
+            margin-top: 10%;
+        }
+        .cam_space{
+            margin-top: -41%;
+            margin-left: 40%;
+            position: relative;
+            width: 57%;
+            background-color: cadetblue;
+            /* background-color: transparent; */
+            min-height: 75%;
+            border-radius: 10px 10px 10px 10px;
+        }
+    </style>
+</head>
+
+<body>
+    {% include "dept_nav.html" %}
+    {% include "header.html"%}
+    <div class="workspace">
+        <div class="header">
+            <header>
+                Add Staff
+            </header>
+        </div>
+        </br>
+        <div class="data_set">
+            <form id="login-form" action="/staff_form" method="post">
+                <div class="inpt_box">
+                    {% with messages = get_flashed_messages() %}
+                    {% if messages %}
+                        <ul>
+                            {% for message in messages %}
+                                <li style="color: red;">{{ message }}</li>
+                            {% endfor %}
+                        </ul>
+                    {% endif %}
+                    {% endwith %}
+                    <label>Staff ID</label>
+                    <input type="text" name="staff_id" placeholder="staff ID" required><i class="validation">
+                </div>
+                <div class="inpt_box">
+                    <label>name</label>
+                    <input type="text" name="staff_name" placeholder="Staff Name" required><i class="validation">
+                </div>
+                <div class="inpt_box">
+                    <label>BRANCH</label>
+                    <select name="staff_branch">
+                        <option value="CSE">CSE</option>
+                        <option value="CV">CV</option>
+                        <option value="EC">EC</option>
+                        <option value="EEE">EEE</option>
+                        <option value="ME">ME</option>
+                    </select>
+                </div>
+                <div class="inpt_box">
+                    <label>Password</label>
+                    <input type="password" name="staff_passwd" placeholder="Password" required><i class="validation">
+                </div>
+                <div class="cap_btn">
+                    <button type="submit" id="cap_data_set" value="cap_data_set">Submit</button>
+                </div>
+            </form>
+        </div>
+    </body>
+</html>

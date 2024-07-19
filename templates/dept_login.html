@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Library</title>
+    <style>
+        body {
+            background-color: #9f9da7;
+            font-size: 1.6rem;
+            font-family: "Open Sans", sans-serif;
+            color: #2b3e51;
+            margin-top: 0%;
+            position: relative;
+        }
+
+        h2 {
+            font-weight: 300;
+            text-align: center;
+        }
+
+        .login-form-wrap {
+            margin-top: 0%;
+            background-color: #8d8686;
+            width: 35%;
+            margin: 30px auto;
+            text-align: center;
+            padding: 20px 0 0 0;
+            border-radius: 4px;
+            box-shadow: 0px 30px 50px 0px rgba(217, 9, 9, 0.2);
+            padding: 0%;
+        }
+
+        .login-form {
+            padding: 0 60px;
+        }
+
+        input {
+            display: block;
+            box-sizing: border-box;
+            width: 32%;
+            outline: none;
+            height: 60px;
+            line-height: 60px;
+            border-radius: 4px;
+            margin-left: 34%;
+            margin-bottom: 10%;
+        }
+
+        input[type="password"],
+        input[type="text"] {
+            width: 80%;
+            padding: 0 0 0 10px;
+            margin: 0;
+            color: #ffffff;
+            border: 1px solid #c2c0ca;
+            font-style: normal;
+            font-size: 16px;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            position: relative;
+            display: inline-block;
+            background: none;
+            margin-left: 0%;
+        }
+
+        input[type="text"]:focus,
+        input[type="email"]:focus {
+            border-color: #3ca9e2;
+        }
+
+        input[type="text"]:focus:invalid,
+        input[type="email"]:focus:invalid {
+            color: #cc1e2b;
+            border-color: #cc1e2b;
+        }
+
+        input[type="text"]:valid ~ .validation,
+        input[type="email"]:valid ~ .validation {
+            display: block;
+            border-color: #0C0;
+        }
+
+        input[type="text"]:valid ~ .validation span,
+        input[type="email"]:valid ~ .validation span {
+            background: #0C0;
+            position: absolute;
+            border-radius: 6px;
+        }
+
+        input[type="text"]:valid ~ .validation span:first-child,
+        input[type="email"]:valid ~ .validation span:first-child {
+            top: 30px;
+            left: 14px;
+            width: 20px;
+            height: 3px;
+            -webkit-transform: rotate(-45deg);
+            transform: rotate(-45deg);
+        }
+
+        input[type="text"]:valid ~ .validation span:last-child,
+        input[type="email"]:valid ~ .validation span:last-child {
+            top: 35px;
+            left: 8px;
+            width: 11px;
+            height: 3px;
+            -webkit-transform: rotate(45deg);
+            transform: rotate(45deg);
+        }
+
+        .validation {
+            display: none;
+            position: absolute;
+            content: " ";
+            height: 60px;
+            width: 30px;
+            right: 15px;
+            top: 0px;
+        }
+
+        input[type="submit"] {
+            border: none;
+            display: block;
+            background-color: #3ca9e2;
+            color: #fff;
+            font-weight: bold;
+            text-transform: uppercase;
+            cursor: pointer;
+            -webkit-transition: all 0.2s ease;
+            transition: all 0.2s ease;
+            font-size: 18px;
+            position: relative;
+            display: inline-block;
+            cursor: pointer;
+            text-align: center;
+            width: 80%;
+            margin-left: 0%;
+        }
+
+        input[type="submit"]:hover {
+            background-color: #8ed532;
+            -webkit-transition: all 0.2s ease;
+            transition: all 0.2s ease;
+        }
+
+        .popup {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 20px;
+            background-color: #fff;
+            border: 1px solid #ccc;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+        }
+
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+        }
+    </style>
+</head>
+<!-- {% include"extern_nav.html"%} -->
+<body>
+
+ 
+    <div class="popup">
+        <p style="color: red;">{{ msg }}</p>
+    </div>
+    <!-- <div class="msg">{{ msg }}</div> -->
+    <div class="login-form-wrap">
+        <h2>Admin Login</h2>
+        <form class="login-form" action="/dept_login" method="post">
+            <p>
+                <input type="text" id="dept_id" name="dept_id" placeholder="Dept ID" required><i class="validation"><span></span><span></span></i>
+            </p>
+            <p>
+                <input type="password" id="dept_passwd" name="dept_passwd" placeholder="dept_passwd" required><i class="validation"><span></span><span></span></i>
+            </p>
+            <p>
+                <input type="submit" id="login" value="Login">
+            </p>
+        </form>
+    </div>
+
+    <script>
+        // Function to display the popup and overlay
+        function displayPopup() {
+            document.querySelector('.popup').style.display = 'block';
+            document.querySelector('.overlay').style.display = 'block';
+        }
+
+        // Function to close the popup and overlay
+        function closePopup() {
+            document.querySelector('.popup').style.display = 'none';
+            document.querySelector('.overlay').style.display = 'none';
+        }
+        
+    </script>
+</body>
+
+</html>

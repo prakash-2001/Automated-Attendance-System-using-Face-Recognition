@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Student Attendance Details</title>
+    <style>
+        body {
+            background-color: rgb(215, 209, 226);
+        }
+
+        header {
+            font-size: 30px;
+            font-weight: bold;
+        }
+
+        .report-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 20px;
+            border-bottom: 2px solid rgba(0, 20, 151, 0.59);
+        }
+
+        .recent-Articles {
+            font-size: 30px;
+            font-weight: 600;
+            color: #5500cb;
+        }
+
+        .report-container {
+            margin: 70px auto 0px auto;
+            background-color: #ffffff;
+            border-radius: 10px;
+            box-shadow: 3px 3px 10px rgb(188, 188, 188);
+            padding: 20px;
+            max-width: 1200px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th, td {
+            padding: 10px;
+            border: 1px solid black;
+            text-align: left;
+        }
+
+        #option_btn1, #option_btn2 {
+            width: 30%;
+            height: 70%;
+            color: black;
+            font-size: small;
+            border-radius: 7px;
+            box-shadow: 2px 2px 2px 2px rgb(72, 72, 80);
+        }
+
+        #option_btn1 {
+            background-color: rgb(9, 204, 9);
+        }
+
+        #option_btn2 {
+            background-color: rgba(255, 0, 0, 0.975);
+        }
+
+        #option_btn1:active {
+            background-color: #0dff00;
+        }
+
+        #option_btn2:active {
+            background-color: #8a0404;
+        }
+        .workspace{
+            margin-left: 18%;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation and Header -->
+    {% include "dept_nav.html" %}
+    {% include "header.html"%}
+
+    <!-- Main Content -->
+    <div class="workspace">
+        <div class="report-container"> 
+            <!-- Report Header -->
+            <div class="report-header"> 
+                <h1 class="recent-Articles">STUDENT ATTENDANCE DETAILS</h1>
+                <button type="submit">PRINT</button> 
+            </div>   
+
+            <!-- Table for Attendance Data -->
+            <table>
+                <tr>
+                    <th>USN</th>
+                    <th>Names</th>
+                    <th>Branch</th>
+                    <th>Semester</th>                                    
+                    <th>Attendance Score</th>
+                </tr>
+                <!-- Loop through student data and generate rows -->
+                {% for student in student_dbs %}
+                <tr>
+                    <td>{{student['usn']}}</td>
+                    <td>{{student['name']}}</td>
+                    <td>{{student['branch']}}</td>                                    
+                    <td>{{student['sem']}}</td>
+                    <td>{{student['attendance']}}</td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+    </div>
+</body>
+</html>

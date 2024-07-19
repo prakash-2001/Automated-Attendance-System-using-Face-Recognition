@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>
+            <title>{{ page_title }}</title>
+        </title>
+        <style>
+            .workspace{
+                position: absolute;
+                width: 81.1%;
+                height: 89%;
+                background-color: rgb(215, 209, 226);
+                margin-left: 18.5%;
+                margin-top: 5%;
+                border-radius: 2px 2px 2px 2px;
+               
+            }
+
+            .header{
+                margin-top: 2%;
+                font-size: 30px;
+                font-weight: bold;
+                text-align: left;
+            }
+            .workspace .btn{
+                text-align: center;
+                margin-left: 0%;
+                margin-top: 7%;
+            }
+            button{
+                width: 200px;
+                height: 50px;
+                border-radius: 10px 10px 10px 10px;
+                border-color: rgb(67, 12, 247);
+                color: rgb(255, 255, 255);
+                font-size: large;
+                background-color: rgba(19, 196, 57, 0.73);
+                border-width: 3px;
+            }
+            .button1{
+                width: 200px;
+                height: 50px;
+                border-radius: 10px 10px 10px 10px;
+                border-color: rgb(67, 12, 247);
+                color: rgb(255, 255, 255);
+                font-size: large;
+                background-color: rgba(213, 33, 33, 0.73);
+                border-width: 3px;
+            }
+            .button1:hover{
+                border-color: rgb(13, 13, 203);
+                background-color: rgb(255, 0, 0);
+            }
+            button:hover{
+                border-color: rgb(13, 13, 203);
+                background-color: rgb(0, 255, 81);
+            }
+            label{
+                font-size: large;
+                font-weight: bold;
+            }
+          
+        </style>   
+    </head>
+    <body>
+        {% include "dept_nav.html" %}
+        {% include "header.html"%}
+        <div class="workspace">
+            <div class="header">
+                <header>
+                    ATTENDANCE
+                </header>
+            </div>    
+            <div class="btn">
+                <form action="/run_prg" method="post">
+                <label>Take Attendance: </label>
+                    <button type="submit">START</button>
+                </form>
+            </div>
+            <div class="btn">
+                <form action="/stop" method="post"></form>
+                <label>Stop Attendance: </label>
+                    <button class="button1" type="submit">STOP</button>
+                </form>
+            </div>
+        </div>
+    </body>
+</html>

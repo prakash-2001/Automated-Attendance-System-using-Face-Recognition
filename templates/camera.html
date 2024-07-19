@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camera View</title>
+</head>
+<body>
+    <h1>Camera View</h1>
+
+    <!-- Display camera frame here -->
+    <img id="cameraFrame" alt="Camera Frame" style="width: 640px; height: 480px;">
+
+    <script>
+        // Update the camera frame using server-sent events
+        const eventSource = new EventSource('/camera_feed');
+
+        eventSource.onmessage = function (event) {
+            document.getElementById('cameraFrame').src = `data:image/jpeg;base64,${event.data}`;
+        };
+    </script>
+
+    <form action="/" method="GET">
+        <button type="submit">Back to Main Page</button>
+    </form>
+</body>
+</html>

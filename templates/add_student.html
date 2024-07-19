@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ page_title }}</title>
+    <style>
+        .workspace {
+            position: absolute;
+            width: 81.1%;
+            height: 89%;
+            background-color: rgb(215, 209, 226);
+            margin-left: 18.5%;
+            margin-top: 5%;
+            border-radius: 2px 2px 2px 2px;
+        }
+
+        .header {
+            margin-top: 2%;
+            font-size: 30px;
+            font-weight: bold;
+            text-align: left;
+        }
+
+        #login-form {
+            position:relative;
+            top: 5%;
+            left: 10%;
+            width: 90%;
+        }
+
+        .inpt_box {
+            margin-bottom: 1%;
+            margin-top: 1%;
+            padding-top: 8%;
+            padding-bottom: 6%;
+        }
+
+        .inpt_box input {
+            width: 30%;
+            /* Adjust the width as needed */
+            box-sizing: border-box;
+            border-radius: 20px 20px 20px 20px;
+            padding: 7px;
+        }
+
+        .cam_btn
+        {
+            margin-left: 6%;
+            margin-top: 13%;
+        }
+        .cap_btn {
+            margin-top: 3%;
+            margin-left: 6%;
+        }
+
+        .cam_btn button{
+            width: 45%;
+            box-sizing: border-box;
+            border-radius: 8px 8px 8px 8px;
+            padding: 10px;
+            background-color:  rgb(40, 13, 75);
+            color: white;
+        }
+
+        .cam_btn button:focus{
+            background-color: rgb(20, 52, 168);
+        }
+        .cap_btn button {
+            width: 45%;
+            box-sizing: border-box;
+            border-radius: 8px 8px 8px 8px;
+            padding: 10px;
+            background-color: rgb(33, 128, 41);
+            color: white;
+            
+        }
+
+        .cap_btn button:focus {
+            background-color: rgb(237, 175, 60);
+
+        }
+
+        .data_set {
+            margin-top: 0.1%;
+            background-color: rgb(118, 118, 148);
+            width: 50%;
+            margin-left:2%;
+            min-height: 75%;
+            border-radius:  10px 10px 10px 10px;
+            /* Align to the left */
+        }
+        .haad{
+            padding-top: 10%;
+            margin-top: 10%;
+        }
+        .cam_space{
+            margin-top: -33%;
+            margin-left: 55%;
+            position: relative;
+            width: 40%;
+            background-color: cadetblue;
+            /* background-color: transparent; */
+            min-height: 50%;
+            border-radius: 10px 10px 10px 10px;
+        }
+    </style>
+    <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+</head>
+
+<body>
+    {% include "dept_nav.html" %}
+    {% include "header.html"%}
+    <div class="workspace">
+        <div class="header">
+            <header>
+                Add Student
+            </header>
+        </div>
+        </br>
+        <div class="data_set">
+            {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                <ul>
+                    {% for message in messages %}
+                        <li style="color: red;">{{ message }}</li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
+            {% endwith %}
+            <form id="captureForm" action="/submit_form" method="post">
+                <div class="inpt_box">
+                    <label>USN</label>
+                    <input type="text" name="usn" placeholder="USN" required><i class="validation">
+                    <label>name</label>
+                    <input type="text" name="name" placeholder="Name" required><i class="validation">
+                </div>
+                <div class="inpt_box">
+                    <label>BRANCH</label>
+                    <select name="branch">
+                        <option value="CSE">CSE</option>
+                        <option value="CV">CV</option>
+                        <option value="EC">EC</option>
+                        <option value="EEE">EEE</option>
+                        <option value="ME">ME</option>
+                    </select>
+                    <label>SEM</label>
+                    <select name="sem">
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                        <option value="6">6</option>
+                        <option value="7">7</option>
+                        <option value="8">8</option>
+                    </select>
+                </div>
+                <div class="cam_btn">
+                    <button type="button" id="openCamera">Open Camera</button>
+                </div>
+                <div class="cap_btn">
+                    <button type="submit" value="cap_data_set">submit</button>
+                </div>
+            </form>
+        </div>
+        <div class="cam_space"><div id="videoContainer" style="position: relative; z-index: 1000;"></div></div>
+        <script>
+            $(document).ready(function () {
+    // Function to open the camera
+    $("#openCamera").click(function () {
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(function (stream) {
+                // Create a video element
+                var video = document.createElement('video');
+                
+                // Set the video element to play the stream
+                video.srcObject = stream;
+                video.autoplay = true;
+
+                // Append the video element to the video container
+                var videoContainer = document.getElementById('videoContainer');
+                videoContainer.appendChild(video);
+
+                // Set the style of the video element to control its positioning and visibility
+                video.style.width = '100%';
+                video.style.height = 'auto';
+                video.style.zIndex = 1000;
+
+                // Capture images when the 'Submit' button is clicked
+                $("#captureForm").submit(function () {
+                    // Stop video stream
+                    video.srcObject.getTracks().forEach(track => track.stop());
+
+                    // Submit the form
+                    $("#captureForm").unbind('submit').submit();
+                });
+            })
+            .catch(function (error) {
+                console.error('Error accessing the camera:', error);
+            });
+    });
+});
+        </script>
+</body>
+</html>

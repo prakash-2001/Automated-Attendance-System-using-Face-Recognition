@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Index Page</title>
+    <style>
+        .workspace{
+            position: absolute;
+            width: 81.1%;
+            height: 89%;
+            background-color: rgb(215, 209, 226);
+            margin-left: 18.5%;
+            margin-top: 5%;
+            border-radius: 2px 2px 2px 2px;
+            text-align:center;
+            align-items: center;
+            padding: 20px; /* Added padding for better spacing */
+        }
+        header{
+            font-size: 30px;
+            font-weight: bold;
+        }
+        p {
+            font-size: 16px;
+            line-height: 1.5;
+        }
+        h3{
+            margin-left: 10%;
+            text-align: left;
+        }
+        p{
+            margin-left: 14%;
+            text-align: left;
+            margin-right: 10%;
+        }
+        .smp{
+            margin-left: 80%;
+            background-image: linear-gradient(to bottom right,rgb(123, 198, 244), rgb(66, 66, 222));
+            box-shadow: 0px 10px 10px 0px;
+            border-radius: 5px 5px 5px 5px;
+        }
+        .smp h3{
+                color: aliceblue;
+                text-align: center;
+        }
+    </style>   
+</head>
+<body>
+    {% include "staff_nav.html" %}
+    {% include "header.html"%}
+    <div class="workspace">
+        <div class="smp">
+            {% block content %}
+            <h3>Department: {{staff['staff_branch']}}</h3>
+            <h3>User: {{staff['staff_name']}}</h3>
+            {% endblock %}
+        </div>
+        <header>
+                HOME
+        </header><br>
+
+        <div class="popup">
+            <p style="color: red;">{{ msg }}</p>
+        </div >
+        <h2>Automated Attendance System using Face Recognition</h2><br><br>
+        <h3>Vision:</h3><br>
+        <p><span> revolutionize traditional attendance tracking methods by pioneering an 
+            Automated Attendance System using cutting-edge face recognition technology. 
+            Our vision is to create a seamless and efficient solution that enhances accuracy, accessibility, 
+            and user experience, ultimately transforming how organizations manage attendance.</p>
+        <br><br>
+        <h3>Mission:</h3><br>
+        <p>Our mission is to develop and implement an Automated Attendance System that leverages 
+            state-of-the-art face recognition algorithms. We are committed to providing a reliable, 
+            user-friendly, and secure solution that simplifies attendance management processes for educational 
+            institutions, workplaces, and events. Through continuous innovation and collaboration, 
+            we aim to contribute to the advancement of automated systems and the improvement of 
+            organizational efficiency.</p>
+    </div>
+</body>
+</html>

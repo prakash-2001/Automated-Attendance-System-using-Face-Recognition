@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Add User</title>
+    <style>
+        .workspace {
+            width: 81.1%;
+            height: 89%;
+            background-color: rgb(215, 209, 226);
+            margin-left: 18.5%;
+            margin-top: 5%;
+            border-radius: 2px;
+            text-align: center;
+            
+        }
+
+        .report-container {
+            max-width: 1200px;
+            margin: 70px auto 0;
+            background-color: #ffffff;
+            border-radius: 10px;
+            box-shadow: 3px 3px 10px rgb(188, 188, 188);
+            padding: 0 20px 20px;
+            margin-top: 8px;
+        }
+
+        .report-header {
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 20px 20px 10px;
+            border-bottom: 2px solid rgba(0, 20, 151, 0.59);
+        }
+
+        h1.recent-Articles {
+            font-size: 30px;
+            font-weight: 600;
+            color: #5500cb;
+        }
+
+        table {
+            width: 100%;
+            overflow-x: auto;
+            text-align: left;
+        }
+
+        th,
+        td {
+            height: 40px;
+            padding-top: 10px;
+        }
+
+        .cap_btn button {
+            width: 30%;
+            height: 70%;
+            background-color: rgba(255, 0, 0, 0.975);
+            color: black;
+            font-size: small;
+            box-shadow: 2px 2px 2px rgb(72, 72, 80);
+        }
+
+        .cap_btn button:active {
+            background-color: #8a0404;
+        }
+        #login-form {
+            position:relative;
+            top: 5%;
+            left: 0;
+            width: 90%;
+        }
+
+        .inpt_box {
+            margin-top: 5%;
+            padding-top: 10%;
+        }
+
+        .inpt_box input {
+            width: 70%;
+            /* Adjust the width as needed */
+            box-sizing: border-box;
+            border-radius: 20px 20px 20px 20px;
+            padding: 10px;
+        }
+
+        .cam_btn
+        {
+            margin-left: 6%;
+            margin-top: 20%;
+        }
+        .cap_btn {
+            margin-top: 15%;
+            margin-left: 6%;
+        }
+
+        .cam_btn button{
+            width: 45%;
+            box-sizing: border-box;
+            border-radius: 8px 8px 8px 8px;
+            padding: 10px;
+            background-color:  rgb(40, 13, 75);
+            color: white;
+        }
+
+        .cam_btn button:visited{
+            background-color: rgb(20, 52, 168);
+        }
+        .cap_btn button {
+            width: 45%;
+            box-sizing: border-box;
+            border-radius: 8px 8px 8px 8px;
+            padding: 10px;
+            background-color: rgb(33, 128, 41);
+            color: white;
+            
+        }
+
+        .cap_btn button:focus {
+            background-color: rgb(237, 175, 60);
+
+        }
+
+        .data_set {
+            margin-top: 2%;
+            background-color: rgb(118, 118, 148);
+            width: 30%;
+            margin-left: 35%;
+            min-height: 75%;
+            border-radius:  10px 10px 10px 10px;
+            /* Align to the left */
+        }
+        .haad{
+            padding-top: 10%;
+            margin-top: 10%;
+        }
+        .cam_space{
+            margin-top: -41%;
+            margin-left: 40%;
+            position: relative;
+            width: 57%;
+            background-color: cadetblue;
+            /* background-color: transparent; */
+            min-height: 75%;
+            border-radius: 10px 10px 10px 10px;
+        }
+    </style>
+</head>
+<body>
+    {% include "dept_nav.html" %}
+    {% include "header.html"%}
+    <div class="workspace">
+        <div class="report-container">
+            <div class="report-header">
+                <h1 class="recent-Articles">Subject wise Attendance Details</h1>
+            </div>
+            <div class="data_set">
+            <form id="login-form" action="/attendance_data_view" method="post">
+                <div class="inpt_box">
+                    <label>subject code</label>
+                    <select name="subject_code" id="subject_code">
+                        {% for code in subject_codes %}
+                        <option value="{{ code[0] }}">{{ code[0] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="cap_btn">
+                    <button type="submit" id="cap_data_set">Submit</button>
+                </div>
+            </form>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
