@@ -1,0 +1,102 @@
+﻿{% extends "base.html" %}
+{% block title %}Subjects | Face Attendance{% endblock %}
+
+{% block content %}
+<section class="split-layout reveal">
+    {% if can('subjects.write') %}
+    <article class="panel form-panel">
+        <header class="panel-head">
+            <h2>Create Subject</h2>
+        </header>
+        <form action="{{ url_for('create_subject') }}" method="post" class="form-grid">
+            <label>
+                Subject Code
+                <input type="text" name="code" placeholder="CS101" required maxlength="12" />
+            </label>
+            <label>
+                Subject Name
+                <input type="text" name="name" placeholder="Data Structures" required maxlength="80" />
+            </label>
+            <label>
+                Branch
+                <select name="branch" required>
+                    {% for branch in branches %}
+                    <option value="{{ branch }}">{{ branch }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>
+                Semester
+                <select name="semester" required>
+                    {% for sem in semesters %}
+                    <option value="{{ sem }}">{{ sem }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>
+                Start Time
+                <input type="time" name="start_time" required />
+            </label>
+            <label>
+                End Time
+                <input type="time" name="end_time" required />
+            </label>
+            <label>
+                Faculty
+                <select name="staff_id">
+                    <option value="">Unassigned</option>
+                    {% for member in staff_members %}
+                    <option value="{{ member.id }}">{{ member.full_name }} ({{ member.segment | replace('_', ' ') | title }}, {{ member.branch }})</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <button type="submit" class="btn btn-primary">Save Subject</button>
+        </form>
+    </article>
+    {% endif %}
+
+    <article class="panel {% if not can('subjects.write') %}panel-wide{% endif %}">
+        <header class="panel-head">
+            <h2>Subjects</h2>
+        </header>
+        <div class="table-scroll">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Code</th>
+                        <th>Name</th>
+                        <th>Branch</th>
+                        <th>Sem</th>
+                        <th>Staff</th>
+                        <th>Time</th>
+                        {% if can('subjects.write') %}<th>Action</th>{% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                {% for subject in subjects %}
+                    <tr>
+                        <td>{{ subject.code }}</td>
+                        <td>{{ subject.name }}</td>
+                        <td>{{ subject.branch }}</td>
+                        <td>{{ subject.semester }}</td>
+                        <td>{{ subject.staff_name or 'Unassigned' }}</td>
+                        <td>{{ subject.start_time }} - {{ subject.end_time }}</td>
+                        {% if can('subjects.write') %}
+                        <td>
+                            <form action="{{ url_for('delete_subject', subject_id=subject.id) }}" method="post" onsubmit="return confirm('Deactivate this subject?');">
+                                <button type="submit" class="btn btn-small btn-danger">Deactivate</button>
+                            </form>
+                        </td>
+                        {% endif %}
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="{% if can('subjects.write') %}7{% else %}6{% endif %}" class="empty-state">No subjects available.</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </article>
+</section>
+{% endblock %}

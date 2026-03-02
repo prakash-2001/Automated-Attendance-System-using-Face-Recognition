@@ -1,0 +1,73 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{% block title %}Face Attendance{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Sora:wght@400;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}" />
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    <div class="bg-grid" aria-hidden="true"></div>
+    <div class="bg-blob blob-a" aria-hidden="true"></div>
+    <div class="bg-blob blob-b" aria-hidden="true"></div>
+
+    {% if current_user %}
+    <header class="site-header">
+        <a class="brand" href="{{ url_for('dashboard') }}">
+            <span class="brand-pulse"></span>
+            <span>Face Attendance v2</span>
+        </a>
+        <nav class="top-nav">
+            <a href="{{ url_for('dashboard') }}">Dashboard</a>
+            {% if can('students.read') %}
+            <a href="{{ url_for('students_page') }}">Students</a>
+            {% endif %}
+            {% if can('users.read') %}
+            <a href="{{ url_for('staff_page') }}">Access</a>
+            {% endif %}
+            {% if can('subjects.read') %}
+            <a href="{{ url_for('subjects_page') }}">Subjects</a>
+            {% endif %}
+            {% if can('structure.read') %}
+            <a href="{{ url_for('structure_page') }}">Branch/Sem</a>
+            {% endif %}
+            {% if can('attendance.execute') %}
+            <a href="{{ url_for('attendance_live') }}">Live Attendance</a>
+            {% endif %}
+            {% if can('reports.read') %}
+            <a href="{{ url_for('attendance_report') }}">Reports</a>
+            {% endif %}
+        </nav>
+        <div class="header-right">
+            <div class="user-chip">
+                <span>{{ current_user.full_name }}</span>
+                <small>{{ current_user.role_label }}</small>
+            </div>
+            <form action="{{ url_for('logout') }}" method="post">
+                <button class="btn btn-outline" type="submit">Logout</button>
+            </form>
+        </div>
+    </header>
+    {% endif %}
+
+    <main class="page-shell {% if not current_user %}public-shell{% endif %}">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <section class="flash-stack" aria-label="Notifications">
+                    {% for category, message in messages %}
+                        <article class="flash flash-{{ category }}">{{ message }}</article>
+                    {% endfor %}
+                </section>
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% from "_workspace_macros.html" import hero, quick_actions, metric_cards, subject_tags, recent_table, alerts_panel with context %}
+{% block title %}Student Workspace | Face Attendance{% endblock %}
+
+{% block content %}
+{{ hero(workspace.title, workspace.subtitle) }}
+{{ quick_actions(action_cards) }}
+{{ metric_cards(metrics) }}
+
+<section class="panel-grid reveal delay-2">
+    <article class="panel">
+        <header class="panel-head">
+            <h3>Subject Progress</h3>
+        </header>
+        <div class="table-scroll">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Code</th>
+                        <th>Subject</th>
+                        <th>Marks Recorded</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in workspace.progress %}
+                    <tr>
+                        <td>{{ row.code }}</td>
+                        <td>{{ row.name }}</td>
+                        <td>{{ row.marks }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="3" class="empty-state">No subject progress data available.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </article>
+
+    <article class="panel">
+        <header class="panel-head">
+            <h3>Attendance Trend</h3>
+        </header>
+        <div class="table-scroll">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Marks</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in workspace.trend %}
+                    <tr>
+                        <td>{{ row.attendance_date }}</td>
+                        <td>{{ row.total }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="2" class="empty-state">No attendance trend data yet.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </article>
+</section>
+
+{{ alerts_panel(workspace.alerts) }}
+
+<section class="panel-grid reveal delay-2">
+    {{ subject_tags(subjects) }}
+    {{ recent_table(recent, "My Recent Attendance") }}
+</section>
+{% endblock %}

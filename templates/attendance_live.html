@@ -1,0 +1,85 @@
+﻿{% extends "base.html" %}
+{% block title %}Live Attendance | Face Attendance{% endblock %}
+
+{% block content %}
+<section class="panel reveal">
+    <header class="panel-head split-between">
+        <h1>Live Attendance</h1>
+        <form action="{{ url_for('attendance_live') }}" method="get" class="inline-filter">
+            <label>
+                Subject
+                <select name="subject_id" onchange="this.form.submit()">
+                    {% for subject in subjects %}
+                    <option value="{{ subject.id }}" {% if selected_subject and selected_subject.id == subject.id %}selected{% endif %}>
+                        {{ subject.code }} - {{ subject.branch }}-{{ subject.semester }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </label>
+        </form>
+    </header>
+
+    {% if selected_subject %}
+    <div class="live-meta">
+        <span class="tag">{{ selected_subject.code }}</span>
+        <span class="tag">{{ selected_subject.name }}</span>
+        <span class="tag">Eligible: {{ eligible_count }}</span>
+        <span class="tag">Marked Today: {{ marked_today }}</span>
+        <span class="tag">Engine: {{ face_backend }}</span>
+    </div>
+
+    {% if face_backend == 'disabled' %}
+    <p class="empty-state">Face pipeline is disabled in this environment. Install `opencv-python` and `numpy` for face scanning. Manual marking still works.</p>
+    {% endif %}
+
+    <div class="live-grid">
+        <article class="live-camera panel-soft">
+            <video id="liveVideo" autoplay playsinline muted></video>
+            <canvas id="liveCanvas" class="hidden"></canvas>
+            <div class="live-actions">
+                <button id="startCameraBtn" type="button" class="btn btn-outline">Start Camera</button>
+                <button id="stopCameraBtn" type="button" class="btn btn-ghost" disabled>Stop Camera</button>
+                <button id="scanFaceBtn" type="button" class="btn btn-primary" disabled>Scan Face</button>
+            </div>
+        </article>
+
+        <article class="panel-soft">
+            <h3>Recognition Result</h3>
+            <p id="recognitionStatus" class="sub-note">Start camera and scan a face.</p>
+            <div id="recognizedStudent" class="recognized-box hidden"></div>
+            <button id="markAttendanceBtn" type="button" class="btn btn-primary" disabled>Mark Attendance</button>
+
+            <hr />
+
+            <h3>Manual Mark</h3>
+            <form id="manualMarkForm" class="inline-form">
+                <input id="manualUsn" type="text" placeholder="Enter USN" maxlength="10" />
+                <button type="submit" class="btn btn-outline">Mark by USN</button>
+            </form>
+        </article>
+    </div>
+
+    <article class="panel-soft">
+        <h3>Activity Log</h3>
+        <ul id="activityLog" class="activity-log"></ul>
+    </article>
+    {% else %}
+    <p class="empty-state">No subject available. Create or assign a subject first.</p>
+    {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+{% if selected_subject %}
+<script>
+    window.liveAttendanceConfig = {
+        subjectId: {{ selected_subject.id }},
+        recognizeUrl: "{{ url_for('recognize_face') }}",
+        markUrl: "{{ url_for('api_mark_attendance') }}",
+        manualUrl: "{{ url_for('api_manual_attendance') }}",
+        faceEnabled: {{ 'true' if face_backend != 'disabled' else 'false' }}
+    };
+</script>
+<script src="{{ url_for('static', filename='js/live_attendance.js') }}"></script>
+{% endif %}
+{% endblock %}

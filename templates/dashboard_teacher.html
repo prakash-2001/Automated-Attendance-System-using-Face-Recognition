@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% from "_workspace_macros.html" import hero, quick_actions, metric_cards, subject_tags, recent_table, alerts_panel with context %}
+{% block title %}Teacher Workspace | Face Attendance{% endblock %}
+
+{% block content %}
+{{ hero(workspace.title, workspace.subtitle) }}
+{{ quick_actions(action_cards) }}
+{{ metric_cards(metrics) }}
+
+<section class="panel reveal delay-2">
+    <header class="panel-head">
+        <h3>Teaching Queue</h3>
+    </header>
+    <div class="table-scroll">
+        <table>
+            <thead>
+                <tr>
+                    <th>Subject</th>
+                    <th>Branch/Sem</th>
+                    <th>Time</th>
+                    <th>Eligible Students</th>
+                    <th>Today's Marks</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in workspace.teaching_queue %}
+                <tr>
+                    <td>{{ row.code }} - {{ row.name }}</td>
+                    <td>{{ row.branch }}-{{ row.semester }}</td>
+                    <td>{{ row.start_time }} - {{ row.end_time }}</td>
+                    <td>{{ row.eligible_students }}</td>
+                    <td>{{ row.today_marks }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5" class="empty-state">No active teaching assignments found.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+{{ alerts_panel(workspace.alerts) }}
+
+<section class="panel-grid reveal delay-2">
+    {{ subject_tags(subjects) }}
+    {{ recent_table(recent, "My Attendance Feed") }}
+</section>
+{% endblock %}

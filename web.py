@@ -1,1005 +1,2544 @@
-import subprocess
-import os
-import MySQLdb
-import cv2
-from flask import Flask, redirect, render_template, jsonify, request, session, url_for, flash
-import re
-from flask_mysqldb import MySQL
-from python.data_set import open_camera
-from collections import Counter
-import face_recognition
-import numpy as np
+﻿from __future__ import annotations
+
+import base64
+import binascii
 import csv
-from datetime import datetime, timedelta
-import time
-import face_recognition
-import mysql.connector
-# from app import app
-
-app = Flask(__name__, static_url_path="/static")
-app.secret_key = 'your_secret_key'
-
-#database connection start
-app.config['MYSQL_HOST']="localhost"
-app.config['MYSQL_USER']="root"
-app.config['MYSQL_PASSWORD']=""
-app.config['MYSQL_DB']="face_rec_db"
-
-db_config = {
-            'host': 'localhost',
-            'user': 'root',
-            'password': '',  # your MySQL password
-            'database': 'face_rec_db'
-            }
-
-
-#main page
-@app.route("/")
-def main_page():
-    return render_template("main_page.html")
-
-#external staff login navigation
-@app.route("/nav_staff_login")
-def nav_staff_login():
-    return render_template("staff_login.html")
-
-
-#navigate login
-@app.route("/nav_dept_login")
-def nav_dept_login():
-    return render_template("dept_login.html")
-
-#attendance_data nav
-@app.route('/attendance_data')
-def attendance_data():
-
-    # Check if the user is logged in as a department
-    if 'loggedin' not in session or not session['loggedin']:
-        # Redirect to login page if not logged in
-        return redirect(url_for('dept_login'))
-
-    # Get the logged-in department's branch from the session
-    dept_branch = session['dept_branch']
-
-    # Establish a connection to the database
-    mysql_connection = mysql.connector.connect(**db_config)
-    cursor = mysql_connection.cursor()
-
-    # Query the subject_log table to get subject codes that match the department's branch
-    cursor.execute('SELECT subject_code FROM subject_log WHERE branch_allot = %s', (dept_branch,))
-    # Fetch all results
-    subject_codes = cursor.fetchall()
-
-    # Close the cursor and connection
-    cursor.close()
-    mysql_connection.close()
-
-    # Process fetched subject codes if necessary
-    # You can extract subject codes from the fetched rows and pass them to the template
-
-    # Render the 'attendance_data.html' template and pass the subject codes
-    # as part of the context
-    return render_template('attendance_data.html', subject_codes=subject_codes)
-
-
-@app.route("/delete_student")
-def delete_student():
-    # Check if the user is logged in as a department
-    if 'loggedin' not in session or not session['loggedin']:
-        # Redirect to login page if not logged in
-        return redirect(url_for('dept_login'))
-
-    # Get the logged-in department's branch from the session
-    dept_branch = session['dept_branch']
-
-    # Establish a connection to the database
-    mysql_connection = mysql.connector.connect(**db_config)
-    cursor = mysql_connection.cursor()
-
-    # Query the student_db table to get USNs that match the department's branch
-    cursor.execute('SELECT usn FROM student_db WHERE branch = %s', (dept_branch,))
-    # Fetch all results
-    usns = cursor.fetchall()
-
-    # Close the cursor and connection
-    cursor.close()
-    mysql_connection.close()
-
-    # Render the 'attendance_data.html' template and pass the USNs
-    # as part of the context
-    return render_template('delete_student.html', usns=usns)
-
-
-# delete operation
-@app.route("/delete_student_data", methods=['POST'])
-def delete_student_data():
-    # Check if the user is logged in as a department
-    if 'loggedin' not in session or not session['loggedin']:
-        # Redirect to login page if not logged in
-        return redirect(url_for('dept_login'))
-
-    # Get the selected USN from the form
-    selected_usn = request.form['selected_usn']
-
-    # Establish a connection to the database
-    mysql_connection = mysql.connector.connect(**db_config)
-    cursor = mysql_connection.cursor()
-
-    try:
-        # Execute a SQL DELETE query to remove the row where the USN matches the selected USN
-        cursor.execute('DELETE FROM student_db WHERE usn = %s', (selected_usn,))
-        cursor.execute('DELETE FROM attendance_log WHERE usn = %s', (selected_usn,))
-         
-        # Commit the changes to the database
-        mysql_connection.commit()
-
-        # Close the cursor and connection
-        cursor.close()
-        mysql_connection.close()
-
-        # Redirect to the student_view.html page after successfully deleting the student data
-        return redirect(url_for('student_view'))
-
-    except Exception as e:
-        # If an error occurs, rollback the transaction and handle the error
-        mysql_connection.rollback()
-        # Handle the error, you can render an error page or redirect to another page
-        return render_template('error.html', error=str(e))
-
-
-# delete operation
-@app.route("/delete_staff_data", methods=['POST'])
-def delete_staff_data():
-    # Check if the user is logged in as a department
-    if 'loggedin' not in session or not session['loggedin']:
-        # Redirect to login page if not logged in
-        return redirect(url_for('dept_login'))
-
-    # Get the selected USN from the form
-    selected_staff = request.form['selected_staff']
-
-    # Establish a connection to the database
-    mysql_connection = mysql.connector.connect(**db_config)
-    cursor = mysql_connection.cursor()
-
-    try:
-        # Execute a SQL DELETE query to remove the row where the USN matches the selected USN
-        cursor.execute('DELETE FROM faculty_db WHERE staff_name = %s', (selected_staff,))
-         
-        # Commit the changes to the database
-        mysql_connection.commit()
-
-        # Close the cursor and connection
-        cursor.close()
-        mysql_connection.close()
-
-        # Redirect to the student_view.html page after successfully deleting the student data
-        return redirect(url_for('staff_view'))
-
-    except Exception as e:
-        # If an error occurs, rollback the transaction and handle the error
-        mysql_connection.rollback()
-        # Handle the error, you can render an error page or redirect to another page
-        return render_template('error.html', error=str(e))
-
-
-
-app.static_folder = os.path.join(app.root_path, '/photos')
-@app.route("/staff_student_view")
-def staff_student_view():
-    if 'loggedin' not in session:
-        return redirect(url_for('login'))
-
-    try:
-        # Connect to MySQL database
-        mysql_connection = mysql.connector.connect(**db_config)
-        cur = mysql_connection.cursor(dictionary=True)
-
-        # Execute query to get students from the same branch as the staff
-        cur.execute('SELECT * FROM student_db WHERE branch = %s', (session['staff_branch'],))
-        staff_student_dbs = cur.fetchall()
-
-        # Dictionary to map each student's USN to their first image file
-        usn_to_image = {}
-
-        # Path to the photos folder
-        photos_folder = os.path.join(app.root_path, 'photos')
-        
-        # Iterate over the files in the 'photos' folder
-        for filename in os.listdir(photos_folder):
-            # Split the filename at the underscore
-            usn, suffix = filename.split('_', 1)
-            if suffix.startswith('1'):
-                # Map the USN to the first image file path
-                usn_to_image[usn] = os.path.join('photos', filename)
-
-        # Close the cursor and connection
-        cur.close()
-        mysql_connection.close()
-
-        # Debug: Print the USN-to-image mapping
-        print("USN-to-image mapping:", usn_to_image)
-
-        # Render the template with the list of students and their corresponding first images
-        return render_template('staff_student_view.html', staff_student_dbs=staff_student_dbs, usn_to_image=usn_to_image)
-
-    except mysql.connector.Error as e:
-        print(f"Database error: {e}")
-        return render_template('error.html', error='Database error occurred.')
-
-
-#dept login
-@app.route("/dept_login", methods=['POST','GET'])
-# @app.route('/pythonlogin/', methods=['GET', 'POST'])
-def login():
-    # Output a message if something goes wrong...
-    msg = ''
-                   # Check if "dept_id" and "dept_passwd" POST requests exist (user submitted form)
-    if request.method == 'POST' and 'dept_id' in request.form and 'dept_passwd' in request.form:
-        # Create variables for easy access
-        dept_id = request.form['dept_id']
-        dept_passwd = request.form['dept_passwd']           
-
-        # Establish the connection
-        mysql_connection = mysql.connector.connect(**db_config)
-
-        # Create a dictionary cursor
-        cursor = mysql_connection.cursor(dictionary=True)
-        # Check if dept exists using MySQL
-        
-        cursor.execute('SELECT * FROM dept_login WHERE dept_id = %s AND dept_passwd = %s', (dept_id, dept_passwd,))
-        # Fetch one record and return result
-        dept = cursor.fetchone()
-        # If dept exists in dept_login table in out database
-        if dept:
-            # Create session data, we can access this data in other routes
-            session['loggedin'] = True
-            session['dept_id'] = dept['dept_id']
-            session['dept_head_name']=dept['dept_head_name']
-            session['dept_branch']=dept['dept_branch']
-            session['dept_passwd'] = dept['dept_passwd']
-            # Redirect to home page
-            msg="logged in sucessfully !"
-            return render_template('index.html', msg=msg, dept=dept)
-        else:
-            # dept doesnt exist or dept_id/dept_passwd incorrect
-            msg = 'Incorrect dept_id/dept_passwd!'
-    # Show the login form with message (if any)
-            return render_template('dept_login.html', msg=msg)
-    return render_template('dept_login.html', msg=msg)
-
-
-#staff login
-@app.route("/staff_login", methods=['POST','GET'])
-# @app.route('/pythonlogin/', methods=['GET', 'POST'])
-def staff_login():
-    # Output a message if something goes wrong...
-    msg = ''
-                   # Check if "dept_id" and "dept_passwd" POST requests exist (user submitted form)
-    if request.method == 'POST' and 'staff_id' in request.form and 'staff_passwd' in request.form:
-        # Create variables for easy access
-        staff_id = request.form['staff_id']
-        staff_passwd = request.form['staff_passwd']
-
-        # Establish the connection
-        mysql_connection = mysql.connector.connect(**db_config)
-
-        # Create a dictionary cursor
-        cursor = mysql_connection.cursor(dictionary=True)
-        # Check if dept exists using MySQL
-        
-        cursor.execute('SELECT * FROM faculty_db WHERE staff_id = %s AND staff_passwd = %s', (staff_id, staff_passwd,))
-        # Fetch one record and return result
-        staff = cursor.fetchone()
-        # If dept exists in dept_login table in out database
-        if staff:
-            # Create session data, we can access this data in other routes
-            session['loggedin'] = True
-            session['staff_id'] = staff['staff_id']
-            session['staff_name']=staff['staff_name']
-            session['staff_branch']=staff['staff_branch']
-            session['staff_passwd'] = staff['staff_passwd']
-            # Redirect to home page
-            msg="logged in sucessfully !"
-            return render_template('staff_index.html', msg=msg, staff=staff)
-        else:
-            # dept doesnt exist or dept_id/dept_passwd incorrect
-            msg = 'Incorrect staff_id/staff_passwd!'
-    # Show the login form with message (if any)
-            return render_template('staff_login.html', msg=msg)
-    return render_template('staff_login.html', msg=msg)
-
-
-#logout session
-@app.route("/logout")
-def logout():
-    session.pop('username', None)
-    return redirect(url_for('main_page'))
-
-
-#home navigation
-@app.route("/index")
-def index():
-    if 'loggedin' in session and session['loggedin']:
-        # You can access session variables like session['dept_branch'] and session['dept_head_name'] here
-        dept = {
-            'dept_branch': session['dept_branch'],
-            'dept_head_name': session['dept_head_name']
-        }
-        return render_template('index.html', dept=dept)
-    else:
-        return redirect(url_for('dept_login'))
-
-#staff index nav
-@app.route("/staff_index")
-def staff_index():
-    if 'loggedin' in session and session['loggedin']:
-        # You can access session variables like session['staff_branch'] and session['staff_name'] here
-        staff = {
-            'staff_branch': session['staff_branch'],
-            'staff_name': session['staff_name']
-        }
-        return render_template('staff_index.html', staff=staff)
-    else:
-        return redirect(url_for('staff_login'))
-
-
-
-
-#attendance navigation
-@app.route("/attendance")
-def attendance():
-        return render_template("attendance.html") 
-
-#student view navigation
-@app.route('/student_view')
-def student_view():
-    if 'loggedin' not in session:
-        return redirect(url_for('login'))
-    
-    mysql_connection = mysql.connector.connect(**db_config)
-    cursor = mysql_connection.cursor(dictionary=True)
-    
-    try:
-        cursor.execute('SELECT * FROM student_db WHERE branch = %s', (session['dept_branch'],))
-        student_dbs = cursor.fetchall()
-        
-        if student_dbs:
-            return render_template('student_view.html', student_dbs=student_dbs)
-        else:
-            return render_template('student_view.html', student_dbs=[])
-    
-    except Error as e:
-        print(f"Database error: {e}")
-        return render_template('error.html', error='Database error occurred.')
-
-
-#staff view
-@app.route('/staff_view', methods=['POST', 'GET'])
-def staff_view():
-    if 'loggedin' not in session:
-        return redirect(url_for('login'))
-    
-    try:
-        mysql_connection = mysql.connector.connect(**db_config)
-        cursor = mysql_connection.cursor(dictionary=True)
-        
-        # Fetching staff_id, staff_name, and staff_branch from faculty_db
-        cursor.execute('SELECT staff_id, staff_name, staff_branch FROM faculty_db WHERE staff_branch = %s', (session['dept_branch'],))
-        staff_dbs = cursor.fetchall()
-        
-        # Debug: print the query results to check the data
-        print("staff_dbs:", staff_dbs)
-        
-        return render_template('staff_view.html', staff_dbs=staff_dbs)
-    
-    except mysql.connector.Error as e:
-        print(f"Database error: {e}")
-        return render_template('error.html', error='Database error occurred.')
-
-    except Exception as e:
-        print(f"Error: {e}")
-        return render_template('error.html', error='An unexpected error occurred.')
-        
-#subject view
-@app.route("/subject_view")
-def subject_view():
-    db = mysql.connector.connect(**db_config)
-    cursor = db.cursor()
-    cursor.execute("SELECT * FROM subject_log")
-    subject_dbs = cursor.fetchall()
-    cursor.close()
-    db.close()
-    return render_template("subject_view.html", subject_dbs=subject_dbs)
-
-#add_student navigation
-@app.route("/add_student")
-def add_student():
-    return render_template("add_student.html")
-
-#add_staff navigation
-@app.route("/add_staff")
-def add_staff():
-    return render_template("add_staff.html")
-
-
-@app.route("/data_attendance")
-def data_attendance():
-    # Check if the user is logged in as a department
-    if 'loggedin' not in session or not session['loggedin']:
-        # Redirect to login page if not logged in
-        return redirect('/dept_login')
-    
-    # Get the logged-in department's branch from the session
-    dept_branch = session['dept_branch']
-
-    # Establish a connection to the database
-    mysql_connection = mysql.connector.connect(**db_config)
-    cursor = mysql_connection.cursor()
-
-    # Query the subject_log table to get subject codes that match the department's branch
-    cursor.execute('SELECT subject_code FROM subject_log WHERE branch_allot = %s', (dept_branch,))
-    # Fetch all results
-    subject_codes = cursor.fetchall()
-
-    # Close the cursor and connection
-    cursor.close()
-    mysql_connection.close()
-
-    # Render the data in HTML
-    # Passing the list of subject codes to the template to display in a dropdown
-    return render_template('data_attendance.html', subject_codes=subject_codes)
-
-
-
-db = mysql.connector.connect(**db_config)  
-root_folder = os.path.join(os.getcwd(), 'photos')  
-
-#add_subject navigation
-@app.route("/submit_form", methods=["GET", "POST"])
-# Path to the root folder for saving image
-def submit_form():
-    if request.method == 'POST':
-        # Retrieve data from the form
-        usn = request.form.get('usn')
-        name = request.form.get('name')
-        branch = request.form.get('branch')
-        sem = request.form.get('sem')
-
-        # Define the regular expression patterns for USN and name validation
-        usn_pattern = r'^\d{1}[a-zA-Z]{2}\d{2}[a-zA-Z]{2}\d{3}$'
-        name_pattern = r'^[a-zA-Z\s]+$'
-    
-
-        # Validate the USN and name format
-        if not re.match(usn_pattern, usn):
-            flash("Invalid USN format. Please enter a valid USN in the format: int(1)char(2)int(2)char(2)int(3).")
-            return render_template('add_student.html')
-        
-        if not re.match(name_pattern, name):
-            flash("Invalid name format. Name must contain only letters and spaces.")
-            return render_template('add_student.html')
-
-        # Check for duplicate USN in the database
-        cursor = db.cursor()
-        cursor.execute("SELECT COUNT(*) FROM student_db WHERE usn = %s", (usn,))
-        count = cursor.fetchone()[0]
-
-        if count > 0:
-            # If the USN already exists, notify the user and render the form page again
-            flash(f"USN {usn} already exists. Please enter a different USN.")
-            return render_template('add_student.html')
-
-        # Proceed with inserting data into the database
-        cursor.execute("INSERT INTO student_db (usn, name, branch, sem) VALUES (%s, %s, %s, %s)", (usn, name, branch, sem))
-        db.commit()
-        cursor.close()
-
-        # Capture images using the capture_images function
-        image_paths = capture_images(usn)
-
-        # Render the student view template with context data
-        return render_template('student_view.html', usn=usn, name=name, branch=branch, sem=sem, image_paths=image_paths)
-
-        # Capture images using the capture_images function
-        image_paths = capture_images(usn)
-
-        # Render the student view template with context data
-        return render_template('student_view.html', usn=usn, name=name, branch=branch, sem=sem, image_paths=image_paths)
-
-def capture_images(usn):
-    cap = cv2.VideoCapture(0)
-    image_paths = []
-
-    for i in range(5):
-        ret, frame = cap.read()
-        if ret:
-            image_name = f'{usn}_{i + 1}.png'
-            image_path = os.path.join(root_folder, image_name)
-            cv2.imwrite(image_path, frame)
-            image_paths.append(image_path)
-            cv2.imshow('Captured Image', frame)
-            cv2.waitKey(500)  # Wait for 500 ms
-
-    cap.release()
-    cv2.destroyAllWindows()
-
-    return image_paths  # Return the list of image paths
-
-@app.route("/staff_form", methods=["GET", "POST"])
-def staff_form():
-    if request.method == 'POST':
-        # Get form data
-        staff_id = request.form['staff_id']
-        staff_name = request.form['staff_name']
-        staff_branch = request.form['staff_branch']
-        staff_passwd = request.form['staff_passwd']
-        
-        # Define regex patterns for staff ID and password validation
-        staff_id_pattern = r'^4HG[a-zA-Z]{2}\d{3}$'  # Format: 4HG char(2) int(3)
-        password_pattern = r'^(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$'  # At least one uppercase letter, one digit, one special character, min 8 chars
-        
-        # Validate staff ID format
-        if not re.match(staff_id_pattern, staff_id):
-            flash("Invalid staff ID format. Please use the format: '4HG'char(2)int(3).")
-            return render_template("add_staff.html")  # Adjust as needed
-
-        # Validate password format
-        if not re.match(password_pattern, staff_passwd):
-            flash("Invalid password format. Password must be at least 8 characters long, and contain at least one uppercase letter, one digit, and one special character.")
-            return render_template("add_staff.html")  # Adjust as needed
-        
-        # Check for duplicate staff ID in the database
-        cursor = db.cursor()
-        cursor.execute("SELECT COUNT(*) FROM faculty_db WHERE staff_id = %s", (staff_id,))
-        count = cursor.fetchone()[0]
-        
-        if count > 0:
-            # If the staff ID already exists, notify the user
-            flash("Staff ID already exists. Please use a different staff ID.")
-            return render_template("add_staff.html")  # Adjust as needed
-        
-        # If all validations pass and no duplicate staff ID, insert data into faculty_db
-        cursor.execute("INSERT INTO faculty_db (staff_id, staff_name, staff_branch, staff_passwd) VALUES (%s, %s, %s, %s)",
-                       (staff_id, staff_name, staff_branch, staff_passwd))
-        
-        # Commit the transaction
-        db.commit()
-        
-        # Close the cursor
-        cursor.close()
-        
-        # Redirect or render the appropriate template (staff_view.html)
-        return render_template("staff_view.html")
-
-    # Render the staff form template for GET requests
-    return render_template("add_staff.html")
-
-#add subject
-@app.route("/add_subject", methods=["GET", "POST"])
-def add_subject():
-    if 'loggedin' not in session or not session['loggedin']:
-        return redirect(url_for('dept_login'))
-    dept_branch = session['dept_branch']
-    mysql_connection = mysql.connector.connect(**db_config)
-    cursor = mysql_connection.cursor()
-    ##same
-    cursor.execute('SELECT staff_name FROM faculty_db WHERE staff_branch = %s', (dept_branch,))
-    staff_names = cursor.fetchall()
-
-    
-    cursor.execute('SELECT class_time FROM class_time WHERE class_branch = %s', (dept_branch,))
-    class_times = cursor.fetchall()
-    cursor.close()
-    
-    mysql_connection.close()
-    return render_template('add_subject.html', staff_names=staff_names, class_times=class_times)
-
-#delete subject data nav
-@app.route("/delete_subject_nav", methods=["GET", "POST"])
-def delete_subject_nav():
-    if 'loggedin' not in session or not session['loggedin']:
-        return redirect(url_for('dept_login'))
-    dept_branch = session['dept_branch']
-    mysql_connection = mysql.connector.connect(**db_config)
-    cursor = mysql_connection.cursor()
-    ##same
-    cursor.execute('SELECT subject_code FROM subject_log WHERE branch_allot = %s', (dept_branch,))
-    subject_codes = cursor.fetchall()
-    cursor.close()
-    
-    mysql_connection.close()
-    return render_template('delete_subject_allotment.html', subject_codes=subject_codes)
-
-#delete staff data nav
-@app.route("/delete_staff_nav", methods=["GET", "POST"])
-def delete_staff_nav():
-    if 'loggedin' not in session or not session['loggedin']:
-        return redirect(url_for('dept_login'))
-    dept_branch = session['dept_branch']
-    mysql_connection = mysql.connector.connect(**db_config)
-    cursor = mysql_connection.cursor()
-    ##same
-    cursor.execute('SELECT staff_name FROM faculty_db WHERE staff_branch = %s', (dept_branch,))
-    staff_names = cursor.fetchall()
-    cursor.close()
-    
-    mysql_connection.close()
-    return render_template('delete_staff.html', staff_names=staff_names)
-
-
-
-#attendance data view
-@app.route("/attendance_data_view", methods=["GET", "POST"])
-def attendance_data_view():
-    try:
-        # Connect to MySQL database
-        db = mysql.connector.connect(**db_config)
-        cursor = db.cursor()
-
-        # Fetch start_time and end_time from subject_log table
-        cursor.execute("SELECT start_time, end_time FROM subject_log")
-        result = cursor.fetchone()
-
-        if not result:
-            return "Error: No data found in subject_log.", 500
-
-        start_time = datetime.strptime(result[0], "%H:%M:%S").time()
-        end_time = datetime.strptime(result[1], "%H:%M:%S").time()
-
-        # Fetch data from attendance_log within the specified time range
-        cursor.execute("SELECT usn, time FROM attendance_log")
-        attendance_data = cursor.fetchall()
-
-        # Filter the data based on the time range
-        filtered_data = [row for row in attendance_data if start_time <= datetime.strptime(row[1], "%H:%M:%S").time() <= end_time]
-
-        # Count the repetitions of each USN within a 3-month duration
-        usn_counts = Counter([row[0] for row in filtered_data])
-
-        # Calculate the count * 10 for each USN
-        usn_scores = {usn: count * 10 for usn, count in usn_counts.items()}
-
-        # Prepare a list of dictionaries containing individual student data
-        student_dbs = []
-        for usn, score in usn_scores.items():
-            # Fetch additional student details from the database based on USN
-            cursor.execute("SELECT name, branch, sem FROM student_db WHERE usn = %s", (usn,))
-            student_details = cursor.fetchone()
-            if student_details:
-                name, branch, sem = student_details
-                student_dbs.append({"usn": usn, "name": name, "branch": branch, "sem": sem, "attendance": score})
-
-        # Render the HTML page with the calculated data
-        return render_template("attendance_data_view.html", student_dbs=student_dbs)
-
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        return "Error occurred while processing the request.", 500
-
-    finally:
-        # Close database connection
-        cursor.close()
-        db.close()
-
-
-#staff view assign to subject adding
-@app.route("/staff_allotment", methods=["GET", "POST"])
-# Path to the root folder for saving image
-def staff_allotment():
-    if request.method == 'POST':
-        # Retrieve data from the form
-        selected_subject_code = request.form.get('selected_subject_code')
-        selected_staff_name = request.form.get('selected_staff_name')
-        selected_branch = request.form.get('selected_branch')
-        selected_sem = request.form.get('selected_sem')
-        selected_start_time = request.form.get('selected_start_time')
-        # Define the regular expression patterns for USN and name validation
-        selected_subject_code_pattern = r"\d{2}[A-Za-z]{2,3}\d{2,3}"
-        
-        # Validate the USN and name format
-        if not re.match( selected_subject_code_pattern,selected_subject_code):
-            flash("Invalid subject code format. Please enter a valid subject code format")
-            return render_template('add_subject.html')
-
-        # Check if the subject code already exists in the subject_log table
-        cursor = db.cursor()
-        cursor.execute("SELECT * FROM subject_log WHERE subject_code = %s", (selected_subject_code,))
-        existing_subject = cursor.fetchone()
-        cursor.close()
-
-        if existing_subject:
-            # Subject code already exists, send a message to the HTML page
-            flash("Subject code already exists in the subject log.")
-            return render_template('add_subject.html')
-
-                # Add 45 minutes to the selected_start_time
+import io
+import json
+import os
+import re
+import sqlite3
+from dataclasses import dataclass
+from datetime import date, datetime
+from functools import wraps
+from pathlib import Path
+from typing import Any, Optional
+
+try:
+    import cv2
+except Exception:
+    cv2 = None
+
+try:
+    import numpy as np
+except Exception:
+    np = None
+from flask import Flask, Response, flash, g, jsonify, redirect, render_template, request, session, url_for
+from werkzeug.security import check_password_hash, generate_password_hash
+
+try:
+    import face_recognition
+except Exception:
+    face_recognition = None
+
+try:
+    from openpyxl import Workbook
+except Exception:
+    Workbook = None
+
+APP_ROOT = Path(__file__).resolve().parent
+INSTANCE_DIR = APP_ROOT / "instance"
+DB_PATH = Path(os.getenv("APP_DB_PATH", str(INSTANCE_DIR / "attendance.db")))
+
+DEFAULT_BRANCHES = ("CSE", "ECE", "EEE", "ME", "CIVIL", "IT", "AIML")
+SEMESTERS = tuple(range(1, 9))
+USN_RE = re.compile(r"^[0-9][A-Z]{2}[0-9]{2}[A-Z]{2}[0-9]{3}$")
+SUBJECT_CODE_RE = re.compile(r"^[A-Z0-9]{4,12}$")
+USERNAME_RE = re.compile(r"^[a-zA-Z0-9_.-]{3,32}$")
+NAME_RE = re.compile(r"^[A-Za-z .'-]{2,80}$")
+PASSWORD_RE = re.compile(r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,64}$")
+BRANCH_RE = re.compile(r"^[A-Z][A-Z0-9_]{1,15}$")
+
+SEGMENT_SUPER_ADMIN = "super_admin"
+SEGMENT_PRINCIPAL = "principal"
+SEGMENT_DEPARTMENT_HEAD = "department_head"
+SEGMENT_TEACHER = "teacher"
+SEGMENT_STUDENT = "student"
+
+SEGMENTS = (
+    SEGMENT_SUPER_ADMIN,
+    SEGMENT_PRINCIPAL,
+    SEGMENT_DEPARTMENT_HEAD,
+    SEGMENT_TEACHER,
+    SEGMENT_STUDENT,
+)
+
+SEGMENT_LABELS: dict[str, str] = {
+    SEGMENT_SUPER_ADMIN: "Super Admin",
+    SEGMENT_PRINCIPAL: "Principal",
+    SEGMENT_DEPARTMENT_HEAD: "Department Head",
+    SEGMENT_TEACHER: "Teacher",
+    SEGMENT_STUDENT: "Student",
+}
+
+BASE_ROLE_BY_SEGMENT: dict[str, str] = {
+    SEGMENT_SUPER_ADMIN: "admin",
+    SEGMENT_PRINCIPAL: "admin",
+    SEGMENT_DEPARTMENT_HEAD: "admin",
+    SEGMENT_TEACHER: "staff",
+    SEGMENT_STUDENT: "staff",
+}
+
+PERMISSION_STUDENTS_READ = "students.read"
+PERMISSION_STUDENTS_WRITE = "students.write"
+PERMISSION_SUBJECTS_READ = "subjects.read"
+PERMISSION_SUBJECTS_WRITE = "subjects.write"
+PERMISSION_ATTENDANCE_READ = "attendance.read"
+PERMISSION_ATTENDANCE_WRITE = "attendance.write"
+PERMISSION_ATTENDANCE_EXECUTE = "attendance.execute"
+PERMISSION_REPORTS_READ = "reports.read"
+PERMISSION_REPORTS_EXECUTE = "reports.execute"
+PERMISSION_USERS_READ = "users.read"
+PERMISSION_USERS_WRITE = "users.write"
+PERMISSION_USERS_GRANT = "users.grant"
+PERMISSION_STRUCTURE_READ = "structure.read"
+PERMISSION_STRUCTURE_WRITE = "structure.write"
+
+PERMISSIONS = (
+    PERMISSION_STUDENTS_READ,
+    PERMISSION_STUDENTS_WRITE,
+    PERMISSION_SUBJECTS_READ,
+    PERMISSION_SUBJECTS_WRITE,
+    PERMISSION_ATTENDANCE_READ,
+    PERMISSION_ATTENDANCE_WRITE,
+    PERMISSION_ATTENDANCE_EXECUTE,
+    PERMISSION_REPORTS_READ,
+    PERMISSION_REPORTS_EXECUTE,
+    PERMISSION_USERS_READ,
+    PERMISSION_USERS_WRITE,
+    PERMISSION_USERS_GRANT,
+    PERMISSION_STRUCTURE_READ,
+    PERMISSION_STRUCTURE_WRITE,
+)
+
+PERMISSION_LABELS: dict[str, str] = {
+    PERMISSION_STUDENTS_READ: "Students: Read",
+    PERMISSION_STUDENTS_WRITE: "Students: Write",
+    PERMISSION_SUBJECTS_READ: "Subjects: Read",
+    PERMISSION_SUBJECTS_WRITE: "Subjects: Write",
+    PERMISSION_ATTENDANCE_READ: "Attendance: Read",
+    PERMISSION_ATTENDANCE_WRITE: "Attendance: Write",
+    PERMISSION_ATTENDANCE_EXECUTE: "Attendance: Execute",
+    PERMISSION_REPORTS_READ: "Reports: Read",
+    PERMISSION_REPORTS_EXECUTE: "Reports: Execute",
+    PERMISSION_USERS_READ: "Users: Read",
+    PERMISSION_USERS_WRITE: "Users: Write",
+    PERMISSION_USERS_GRANT: "Users: Grant Permissions",
+    PERMISSION_STRUCTURE_READ: "Branch/Sem: Read",
+    PERMISSION_STRUCTURE_WRITE: "Branch/Sem: Write",
+}
+
+ROLE_PERMISSIONS: dict[str, set[str]] = {
+    SEGMENT_SUPER_ADMIN: set(PERMISSIONS),
+    SEGMENT_PRINCIPAL: {
+        PERMISSION_STUDENTS_READ,
+        PERMISSION_STUDENTS_WRITE,
+        PERMISSION_SUBJECTS_READ,
+        PERMISSION_SUBJECTS_WRITE,
+        PERMISSION_ATTENDANCE_READ,
+        PERMISSION_REPORTS_READ,
+        PERMISSION_REPORTS_EXECUTE,
+        PERMISSION_USERS_READ,
+        PERMISSION_USERS_WRITE,
+        PERMISSION_STRUCTURE_READ,
+        PERMISSION_STRUCTURE_WRITE,
+    },
+    SEGMENT_DEPARTMENT_HEAD: {
+        PERMISSION_STUDENTS_READ,
+        PERMISSION_STUDENTS_WRITE,
+        PERMISSION_SUBJECTS_READ,
+        PERMISSION_SUBJECTS_WRITE,
+        PERMISSION_ATTENDANCE_READ,
+        PERMISSION_ATTENDANCE_WRITE,
+        PERMISSION_ATTENDANCE_EXECUTE,
+        PERMISSION_REPORTS_READ,
+        PERMISSION_REPORTS_EXECUTE,
+        PERMISSION_USERS_READ,
+        PERMISSION_USERS_WRITE,
+        PERMISSION_STRUCTURE_READ,
+    },
+    SEGMENT_TEACHER: {
+        PERMISSION_STUDENTS_READ,
+        PERMISSION_SUBJECTS_READ,
+        PERMISSION_ATTENDANCE_READ,
+        PERMISSION_ATTENDANCE_WRITE,
+        PERMISSION_ATTENDANCE_EXECUTE,
+        PERMISSION_REPORTS_READ,
+        PERMISSION_REPORTS_EXECUTE,
+    },
+    SEGMENT_STUDENT: {
+        PERMISSION_SUBJECTS_READ,
+        PERMISSION_ATTENDANCE_READ,
+        PERMISSION_REPORTS_READ,
+    },
+}
+
+ROLE_SCOPE_DESCRIPTIONS: dict[str, str] = {
+    SEGMENT_SUPER_ADMIN: "Global control, permission grants, and full execution rights.",
+    SEGMENT_PRINCIPAL: "Institute-wide governance without permission-grant authority.",
+    SEGMENT_DEPARTMENT_HEAD: "Branch-scoped academic and user management.",
+    SEGMENT_TEACHER: "Assigned-subject attendance operations and reports.",
+    SEGMENT_STUDENT: "Personal attendance and assigned subject visibility.",
+}
+
+SEGMENTS_WITH_BRANCH = {SEGMENT_DEPARTMENT_HEAD, SEGMENT_TEACHER, SEGMENT_STUDENT}
+
+SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    full_name TEXT NOT NULL,
+    role TEXT NOT NULL CHECK(role IN ('admin', 'staff')),
+    branch TEXT,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS students (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    usn TEXT NOT NULL UNIQUE,
+    full_name TEXT NOT NULL,
+    branch TEXT NOT NULL,
+    semester INTEGER NOT NULL,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS subjects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    branch TEXT NOT NULL,
+    semester INTEGER NOT NULL,
+    staff_id INTEGER,
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (staff_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS face_profiles (
+    student_id INTEGER PRIMARY KEY,
+    embedding TEXT NOT NULL,
+    backend TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS attendance_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    attendance_date TEXT NOT NULL,
+    subject_id INTEGER NOT NULL,
+    student_id INTEGER NOT NULL,
+    marked_by INTEGER NOT NULL,
+    marked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    method TEXT NOT NULL CHECK(method IN ('face', 'manual')),
+    confidence REAL,
+    FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    FOREIGN KEY (marked_by) REFERENCES users(id) ON DELETE RESTRICT,
+    UNIQUE(attendance_date, subject_id, student_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_subject_staff ON subjects(staff_id);
+CREATE INDEX IF NOT EXISTS idx_student_branch_sem ON students(branch, semester);
+CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance_records(attendance_date);
+
+CREATE TABLE IF NOT EXISTS user_segments (
+    user_id INTEGER PRIMARY KEY,
+    segment TEXT NOT NULL CHECK(segment IN ('super_admin', 'principal', 'department_head', 'teacher', 'student')),
+    semester INTEGER,
+    student_id INTEGER UNIQUE,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS user_permissions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    permission TEXT NOT NULL,
+    granted_by INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (granted_by) REFERENCES users(id) ON DELETE RESTRICT,
+    UNIQUE(user_id, permission)
+);
+
+CREATE TABLE IF NOT EXISTS branch_semesters (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    branch TEXT NOT NULL,
+    semester INTEGER NOT NULL,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_by INTEGER,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+    UNIQUE(branch, semester)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_segment_segment ON user_segments(segment);
+CREATE INDEX IF NOT EXISTS idx_user_permissions_user ON user_permissions(user_id);
+CREATE INDEX IF NOT EXISTS idx_branch_sem_active ON branch_semesters(branch, semester, is_active);
+"""
+
+
+@dataclass
+class MatchResult:
+    matched: bool
+    score: float
+    confidence: float
+
+
+class FaceEngine:
+    def __init__(self) -> None:
+        self.backend = "disabled"
+        self.distance_threshold = 0.58
+        self.similarity_threshold = 0.86
+        self.haar = None
+
+        if cv2 is None:
+            return
+
+        self.backend = "opencv-fallback"
+        self.haar = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+
+        if face_recognition is not None:
+            self.backend = "face_recognition"
+
+    @staticmethod
+    def decode_data_url(data_url: str) -> np.ndarray:
+        if cv2 is None or np is None:
+            raise ValueError("Face pipeline is disabled. Install opencv-python and numpy to enable it.")
+
+        if not data_url:
+            raise ValueError("Image payload is empty.")
+
+        payload = data_url
+        if "," in data_url:
+            payload = data_url.split(",", 1)[1]
+
         try:
-            selected_start_time_obj = datetime.strptime(selected_start_time, '%H:%M:%S')
-            added_time_obj = selected_start_time_obj + timedelta(minutes=45)
-            added_time = added_time_obj.strftime('%H:%M:%S')
-        except ValueError:
-            flash("Invalid start time format")
-            return render_template('add_subject.html')
+            image_bytes = base64.b64decode(payload, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise ValueError("Invalid image encoding.") from exc
 
-        cursor = db.cursor()
-        cursor.execute("INSERT INTO subject_log (subject_code, subject_faculty, branch_allot, sem_allot, start_time, end_time) VALUES (%s, %s, %s, %s, %s, %s)", (selected_subject_code, selected_staff_name, selected_branch, selected_sem, selected_start_time, added_time))
-        db.commit()
-        cursor.close()
+        array = np.frombuffer(image_bytes, dtype=np.uint8)
+        image = cv2.imdecode(array, cv2.IMREAD_COLOR)
+        if image is None:
+            raise ValueError("Could not decode image frame.")
+        return image
 
-        # Return a response after successful database operation
-        return render_template('subject_view.html')
+    def extract_embedding(self, image: np.ndarray) -> tuple[Optional[np.ndarray], Optional[str]]:
+        if np is None:
+            return None, "NumPy is not available for face processing."
+        if self.backend == "face_recognition":
+            return self._extract_face_recognition_embedding(image)
+        return self._extract_opencv_embedding(image)
 
-    # Return a response for GET request or other cases
-    return render_template('staff_allotment_form.html')
+    def _extract_face_recognition_embedding(self, image: np.ndarray) -> tuple[Optional[np.ndarray], Optional[str]]:
+        if cv2 is None or np is None or face_recognition is None:
+            return None, "Face recognition backend is not available."
 
-    
+        rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        locations = face_recognition.face_locations(rgb, model="hog")
 
-@app.route("/delete_subject_data", methods=['POST'])
-def delete_subject_data():
-    if 'loggedin' not in session or not session['loggedin']:
-        return redirect(url_for('dept_login'))
+        if not locations:
+            return None, "No face detected. Keep one face clearly in the frame."
+        if len(locations) > 1:
+            return None, "Multiple faces detected. Keep only one face in the frame."
 
-    selected_subject_code = request.form['selected_subject_code']
+        encodings = face_recognition.face_encodings(rgb, known_face_locations=locations)
+        if not encodings:
+            return None, "Could not extract a stable face encoding."
 
-    mysql_connection = mysql.connector.connect(**db_config)
-    cursor = mysql_connection.cursor()
+        embedding = np.asarray(encodings[0], dtype=np.float32)
+        norm = np.linalg.norm(embedding)
+        if norm == 0:
+            return None, "Invalid encoding extracted. Try better lighting."
 
+        return embedding / norm, None
+
+    def _extract_opencv_embedding(self, image: np.ndarray) -> tuple[Optional[np.ndarray], Optional[str]]:
+        if cv2 is None or np is None or self.haar is None:
+            return None, "OpenCV backend is not available."
+
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        faces = self.haar.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(64, 64))
+
+        if len(faces) == 0:
+            return None, "No face detected. Keep your face centered and well lit."
+        if len(faces) > 1:
+            return None, "Multiple faces detected. Keep one face in frame."
+
+        x, y, w, h = max(faces, key=lambda box: box[2] * box[3])
+        face = gray[y : y + h, x : x + w]
+        face = cv2.equalizeHist(face)
+        face = cv2.resize(face, (64, 64), interpolation=cv2.INTER_AREA)
+
+        embedding = face.astype(np.float32).reshape(-1) / 255.0
+        norm = np.linalg.norm(embedding)
+        if norm == 0:
+            return None, "Invalid face sample captured."
+
+        return embedding / norm, None
+
+    def compare(self, probe: np.ndarray, candidate: np.ndarray) -> MatchResult:
+        if np is None:
+            return MatchResult(matched=False, score=0.0, confidence=0.0)
+        if probe.size != candidate.size:
+            return MatchResult(matched=False, score=0.0, confidence=0.0)
+
+        if self.backend == "face_recognition":
+            distance = float(np.linalg.norm(probe - candidate))
+            score = 1.0 / (1.0 + distance)
+            matched = distance <= self.distance_threshold
+            confidence = max(0.0, min(1.0, 1.0 - (distance / self.distance_threshold)))
+            return MatchResult(matched=matched, score=score, confidence=confidence)
+
+        similarity = float(np.dot(probe, candidate))
+        matched = similarity >= self.similarity_threshold
+        confidence = max(0.0, min(1.0, (similarity - self.similarity_threshold) / (1.0 - self.similarity_threshold)))
+        return MatchResult(matched=matched, score=similarity, confidence=confidence)
+
+
+face_engine = FaceEngine()
+
+app = Flask(__name__, template_folder="templates", static_folder="static")
+app.config.update(
+    SECRET_KEY=os.getenv("APP_SECRET_KEY", "change-me-in-production"),
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+)
+
+
+def utc_now_str() -> str:
+    return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def today_str() -> str:
+    return date.today().isoformat()
+
+
+def normalize_name(value: str) -> str:
+    return " ".join(value.strip().split())
+
+
+def parse_semester(value: Any) -> Optional[int]:
     try:
-        cursor.execute('DELETE FROM subject_log WHERE subject_code = %s', (selected_subject_code,))
-        
-        mysql_connection.commit()
-
-        cursor.close()
-        mysql_connection.close()
-
-        return redirect(url_for('subject_view'))
-
-    except Exception as e:
-        mysql_connection.rollback()
-        return render_template('error.html', error=str(e))
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed in SEMESTERS else None
 
 
-
-#thigsgshhsdgws
-@app.route("/tryy")
-def tryy():
-    return render_template("try.html")
-
-
-import mysql.connector
-# Define a function to fetch start and end times from the database
-def fetch_start_end_times():
-
-    # Connect to the MySQL database using a context manager
-    with mysql.connector.connect(**db_config) as conn:
-        with conn.cursor() as cursor:
-            # Define the query to retrieve start and end times
-            query = "SELECT start_time, end_time FROM subject_log"
-
-            # Execute the query
-            cursor.execute(query)
-
-            # Fetch the first row
-            row = cursor.fetchone()
-
-            if row:
-                start_time_str, end_time_str = row
-                
-                # Convert string times to datetime objects
-                current_date = datetime.now().date()
-                start_time = datetime.combine(current_date, datetime.strptime(start_time_str, '%H:%M:%S').time())
-                end_time = datetime.combine(current_date, datetime.strptime(end_time_str, '%H:%M:%S').time())
-
-                return start_time, end_time
-
-    return None, None
-
-# Function to fetch start and end times from the database
-def fetch_start_end_times():
-    # Connect to MySQL database
-    conn = mysql.connector.connect(
-        host="localhost",
-        user="root",
-        password="",
-        database="face_rec_db"
-    )
-    cursor = conn.cursor()
-
+def parse_time_hhmm(value: str) -> Optional[str]:
     try:
-        # Fetch start and end times from subject_log
-        cursor.execute("SELECT start_time, end_time FROM subject_log")
-        result = cursor.fetchone()  # Fetch one result
-
-        # Process the result
-        if result:
-            # Convert start and end times to datetime.time objects
-            start_time = datetime.strptime(result[0], "%H:%M:%S").time()
-            end_time = datetime.strptime(result[1], "%H:%M:%S").time()
-            return start_time, end_time
-        else:
-            print("No data found in subject_log.")
-            return None, None
-    except mysql.connector.Error as e:
-        print(f"Database error: {e}")
-        return None, None
-    finally:
-        # Close the cursor and database connection
-        cursor.close()
-        conn.close()
+        return datetime.strptime(value, "%H:%M").strftime("%H:%M")
+    except (TypeError, ValueError):
+        return None
 
 
-# Assuming db_config is properly defined
+def get_db() -> sqlite3.Connection:
+    if "db" not in g:
+        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        connection = sqlite3.connect(DB_PATH)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
+        g.db = connection
+    return g.db
 
-@app.route("/run_prg", methods=['POST'])
-def prg_run():
-    # Connect to MySQL database
-    db = mysql.connector.connect(**db_config)
-    cursor = db.cursor()
 
-    try:
-        # Fetch start and end times from the database
-        cursor.execute("SELECT start_time, end_time FROM subject_log")
-        result = cursor.fetchone()  # Fetch one result
-
-        # Process the result and check if start and end times were fetched
-        if not result:
-            print("No data found in subject_log.")
-            return "Error: No data found in subject_log.", 500
-
-        # Convert start and end times to datetime.time objects
-        start_time = datetime.strptime(result[0], "%H:%M:%S").time()
-        end_time = datetime.strptime(result[1], "%H:%M:%S").time()
-
-        # Open video capture
-        video_capture = cv2.VideoCapture(0)
-
-        # Check if video capture is opened
-        if not video_capture.isOpened():
-            print("Failed to open video capture device.")
-            return "Error: Failed to open video capture device.", 500
-
-        # Load known faces from folder
-        folder_path = "photos/"
-        known_face_encodings = []
-        known_face_names = []
-
-        for filename in os.listdir(folder_path):
-            if filename.endswith((".jpg", ".jpeg", ".png")):
-                image_path = os.path.join(folder_path, filename)
-                image = face_recognition.load_image_file(image_path)
-
-                # Get face encodings
-                encodings = face_recognition.face_encodings(image)
-
-                # Check if any face encodings were found
-                if encodings:
-                    encoding = encodings[0]
-                    # Remove file extension from filename to use as the name
-                    name = os.path.splitext(filename)[0]
-                    known_face_encodings.append(encoding)
-                    known_face_names.append(name)
-                else:
-                    print(f"No faces found in image: {filename}")
-
-        # Define recognition and rest periods
-        recognition_time = 5 * 60  # Recognize for 5 minutes (300 seconds)
-        rest_time = 5 * 60  # Rest for 5 minutes (300 seconds)
-        total_time = 4 * (recognition_time + rest_time)  # Total period of 4 hours
-
-        # Define the current date
-        current_date = datetime.now().strftime("%Y-%m-%d")
-
-        # Initialize a set to store the names of recognized individuals during each recognition period
-        recognized_names_during_period = set()
-
-        # Main loop for video capture
-        while True:
-            # Get the current time
-            current_time = datetime.now()
-
-            # Check if the current time is within the desired time frame
-            if start_time <= current_time.time() <= end_time:
-                # Calculate the elapsed time during this cycle
-                cycle_start_time = datetime.now()
-                elapsed_time = 0
-
-                while elapsed_time < total_time:
-                    # Calculate the elapsed time
-                    elapsed_time = (datetime.now() - cycle_start_time).total_seconds()
-
-                    # Check if we are in the recognition period
-                    if elapsed_time % (recognition_time + rest_time) < recognition_time:
-                        # Recognition period
-                        while (datetime.now() - cycle_start_time).total_seconds() % (recognition_time + rest_time) < recognition_time:
-                            # Read frame from video capture
-                            ret, frame = video_capture.read()
-                            if not ret:
-                                print("Failed to capture frame from camera.")
-                                break
-
-                            # Resize frame
-                            small_frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
-
-                            # Convert frame to RGB color space
-                            rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
-
-                            # Recognize faces
-                            face_locations = face_recognition.face_locations(rgb_small_frame)
-                            face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations)
-
-                            for face_encoding in face_encodings:
-                                # Compare faces and find the best match
-                                matches = face_recognition.compare_faces(known_face_encodings, face_encoding)
-                                face_distance = face_recognition.face_distance(known_face_encodings, face_encoding)
-                                best_match_index = np.argmin(face_distance)
-
-                                if matches[best_match_index]:
-                                    # Get the name of the best match
-                                    name = known_face_names[best_match_index]
-
-                                    # Display text on the frame
-                                    font = cv2.FONT_HERSHEY_SIMPLEX
-                                    bottom_left_corner_of_text = (10, 100)
-                                    font_scale = 1.5
-                                    font_color = (255, 0, 0)
-                                    thickness = 3
-                                    line_type = 2
-                                    cv2.putText(frame, f"{name} Present", bottom_left_corner_of_text, font, font_scale, font_color, thickness, line_type)
-
-                                    # Add the recognized person's name to the set
-                                    recognized_names_during_period.add(name)
-
-                            # Display the frame
-                            cv2.imshow("Camera", frame)
-
-                            # Quit loop if 'q' key is pressed
-                            if cv2.waitKey(1) & 0xFF == ord("q"):
-                                break
-
-                        # Recognition period ends
-                        print("Recognition period ended.")
-
-                        # Record attendance for recognized individuals
-                        for name in recognized_names_during_period:
-                            current_time = datetime.now().strftime("%H:%M:%S")
-                            cursor.execute(
-                                "INSERT INTO attendance_log (usn, time, log_date) VALUES (%s, %s, %s)",
-                                (name, current_time, current_date)
-                            )
-                            db.commit()
-
-                        # Clear the set for the next recognition period
-                        recognized_names_during_period.clear()
-
-                        # Rest period begins
-                        print("Rest period, no recognition.")
-                        # Sleep for the duration of the rest period
-                        time.sleep(rest_time)
-
-                # Sleep until the next recognition time
-                remaining_time = (start_time + timedelta(days=1) - current_time).total_seconds()
-                if remaining_time > 0:
-                    time.sleep(remaining_time)
-            else:
-                # Sleep until the recognition period starts
-                remaining_time = (start_time - current_time.time()).total_seconds()
-                if remaining_time > 0:
-                    time.sleep(remaining_time)
-
-    except Exception as e:
-        print(f"An error occurred: {e}")
-
-    finally:
-        # Cleanup and close resources
-        if 'video_capture' in locals():
-            video_capture.release()
-        cv2.destroyAllWindows()
-        cursor.close()
+def close_db(_: Optional[BaseException] = None) -> None:
+    db = g.pop("db", None)
+    if db is not None:
         db.close()
 
-    return render_template("attendance.html")
-    
-#run the flask server
+
+app.teardown_appcontext(close_db)
+
+
+def query_one(sql: str, params: tuple[Any, ...] = ()) -> Optional[sqlite3.Row]:
+    return get_db().execute(sql, params).fetchone()
+
+
+def query_all(sql: str, params: tuple[Any, ...] = ()) -> list[sqlite3.Row]:
+    return get_db().execute(sql, params).fetchall()
+
+
+def migrate_legacy_staff_rows() -> None:
+    # Older versions had no segment table and only admin/staff roles.
+    db = get_db()
+    missing_segments = query_all(
+        """
+        SELECT u.id, u.role
+        FROM users u
+        LEFT JOIN user_segments us ON us.user_id = u.id
+        WHERE us.user_id IS NULL
+        """
+    )
+    for row in missing_segments:
+        segment = SEGMENT_SUPER_ADMIN if row["role"] == "admin" else SEGMENT_TEACHER
+        db.execute(
+            """
+            INSERT INTO user_segments (user_id, segment, semester, student_id)
+            VALUES (?, ?, NULL, NULL)
+            """,
+            (row["id"], segment),
+        )
+    if missing_segments:
+        db.commit()
+
+
+def seed_default_scope_matrix() -> None:
+    db = get_db()
+    for branch in DEFAULT_BRANCHES:
+        for semester in SEMESTERS:
+            db.execute(
+                """
+                INSERT INTO branch_semesters (branch, semester, is_active)
+                VALUES (?, ?, 1)
+                ON CONFLICT(branch, semester) DO NOTHING
+                """,
+                (branch, semester),
+            )
+    db.commit()
+
+
+def ensure_default_super_admin() -> None:
+    username = os.getenv("DEFAULT_ADMIN_USERNAME", "admin").strip().lower()
+    password = os.getenv("DEFAULT_ADMIN_PASSWORD", "Admin@123")
+    full_name = os.getenv("DEFAULT_ADMIN_FULL_NAME", "System Admin")
+
+    db = get_db()
+    account = query_one("SELECT id FROM users WHERE username = ?", (username,))
+    if account is None:
+        cursor = db.execute(
+            """
+            INSERT INTO users (username, password_hash, full_name, role, branch, is_active)
+            VALUES (?, ?, ?, 'admin', NULL, 1)
+            """,
+            (username, generate_password_hash(password), full_name),
+        )
+        account_id = cursor.lastrowid
+        db.execute(
+            """
+            INSERT INTO user_segments (user_id, segment, semester, student_id)
+            VALUES (?, ?, NULL, NULL)
+            ON CONFLICT(user_id) DO UPDATE SET segment = excluded.segment, semester = NULL, student_id = NULL
+            """,
+            (account_id, SEGMENT_SUPER_ADMIN),
+        )
+        db.commit()
+        return
+
+    db.execute("UPDATE users SET role = 'admin' WHERE id = ?", (account["id"],))
+    db.execute(
+        """
+        INSERT INTO user_segments (user_id, segment, semester, student_id)
+        VALUES (?, ?, NULL, NULL)
+        ON CONFLICT(user_id) DO UPDATE SET segment = excluded.segment, semester = NULL, student_id = NULL
+        """,
+        (account["id"], SEGMENT_SUPER_ADMIN),
+    )
+    db.commit()
+
+
+def init_db() -> None:
+    db = get_db()
+    db.executescript(SCHEMA_SQL)
+    db.commit()
+    seed_default_scope_matrix()
+    migrate_legacy_staff_rows()
+    ensure_default_super_admin()
+
+def get_available_branches(active_only: bool = True) -> tuple[str, ...]:
+    try:
+        rows = query_all(
+            f"""
+            SELECT DISTINCT branch
+            FROM branch_semesters
+            {"WHERE is_active = 1" if active_only else ""}
+            ORDER BY branch ASC
+            """
+        )
+        branches = tuple(row["branch"] for row in rows if row["branch"])
+        if branches:
+            return branches
+    except sqlite3.Error:
+        pass
+    return DEFAULT_BRANCHES
+
+
+def get_available_semesters(active_only: bool = True) -> tuple[int, ...]:
+    try:
+        rows = query_all(
+            f"""
+            SELECT DISTINCT semester
+            FROM branch_semesters
+            {"WHERE is_active = 1" if active_only else ""}
+            ORDER BY semester ASC
+            """
+        )
+        semesters = tuple(row["semester"] for row in rows if row["semester"] is not None)
+        if semesters:
+            return semesters
+    except sqlite3.Error:
+        pass
+    return SEMESTERS
+
+
+def is_scope_active(branch: str, semester: int) -> bool:
+    row = query_one(
+        """
+        SELECT id
+        FROM branch_semesters
+        WHERE branch = ? AND semester = ? AND is_active = 1
+        """,
+        (branch, semester),
+    )
+    return row is not None
+
+
+def role_display_name(segment: str) -> str:
+    return SEGMENT_LABELS.get(segment, segment.replace("_", " ").title())
+
+
+def get_effective_permissions(user_id: int, segment: str) -> set[str]:
+    effective = set(ROLE_PERMISSIONS.get(segment, set()))
+    extras = query_all("SELECT permission FROM user_permissions WHERE user_id = ?", (user_id,))
+    for row in extras:
+        if row["permission"] in PERMISSIONS:
+            effective.add(row["permission"])
+    return effective
+
+
+def current_user() -> Optional[dict[str, Any]]:
+    if "user_id" not in session:
+        return None
+
+    row = query_one(
+        """
+        SELECT u.id, u.username, u.full_name, u.branch, u.is_active, u.role,
+               us.segment, us.semester, us.student_id,
+               st.branch AS student_branch, st.semester AS student_semester
+        FROM users u
+        LEFT JOIN user_segments us ON us.user_id = u.id
+        LEFT JOIN students st ON st.id = us.student_id
+        WHERE u.id = ?
+        """,
+        (session["user_id"],),
+    )
+    if row is None or row["is_active"] != 1:
+        session.clear()
+        return None
+
+    segment = row["segment"]
+    if segment not in SEGMENTS:
+        segment = SEGMENT_SUPER_ADMIN if row["role"] == "admin" else SEGMENT_TEACHER
+
+    branch = row["student_branch"] if segment == SEGMENT_STUDENT else row["branch"]
+    semester = row["student_semester"] if segment == SEGMENT_STUDENT else row["semester"]
+    permissions = get_effective_permissions(row["id"], segment)
+
+    return {
+        "id": row["id"],
+        "username": row["username"],
+        "full_name": row["full_name"],
+        "role": segment,
+        "role_label": role_display_name(segment),
+        "branch": branch,
+        "semester": semester,
+        "student_id": row["student_id"],
+        "permissions": permissions,
+    }
+
+
+def has_permission(user: Optional[dict[str, Any]], permission: str) -> bool:
+    return user is not None and permission in user.get("permissions", set())
+
+
+def login_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if current_user() is None:
+            flash("Please login to continue.", "warning")
+            return redirect(url_for("login"))
+        return view(*args, **kwargs)
+
+    return wrapped
+
+
+def permission_required(permission: str):
+    def decorator(view):
+        @wraps(view)
+        def wrapped(*args, **kwargs):
+            user = current_user()
+            if user is None:
+                if request.path.startswith("/api/"):
+                    return jsonify({"status": "error", "message": "Authentication required."}), 401
+                flash("Please login to continue.", "warning")
+                return redirect(url_for("login"))
+            if not has_permission(user, permission):
+                if request.path.startswith("/api/"):
+                    return jsonify({"status": "error", "message": "Not authorized."}), 403
+                flash("You are not authorized for this action.", "danger")
+                return redirect(url_for("dashboard"))
+            return view(*args, **kwargs)
+
+        return wrapped
+
+    return decorator
+
+
+def roles_required(*roles: str):
+    # Compatibility helper for older route decorators.
+    def decorator(view):
+        @wraps(view)
+        def wrapped(*args, **kwargs):
+            user = current_user()
+            if user is None:
+                flash("Please login to continue.", "warning")
+                return redirect(url_for("login"))
+            if user["role"] not in roles:
+                flash("You are not authorized for this action.", "danger")
+                return redirect(url_for("dashboard"))
+            return view(*args, **kwargs)
+
+        return wrapped
+
+    return decorator
+
+
+def can_access_branch(user: dict[str, Any], branch: Optional[str]) -> bool:
+    if branch is None:
+        return False
+    if user["role"] in {SEGMENT_SUPER_ADMIN, SEGMENT_PRINCIPAL}:
+        return True
+    return user.get("branch") == branch
+
+
+def get_access_scope_clause(user: dict[str, Any], subject_alias: str = "s", attendance_alias: str = "ar") -> tuple[str, list[Any]]:
+    role = user["role"]
+    if role in {SEGMENT_SUPER_ADMIN, SEGMENT_PRINCIPAL}:
+        return "", []
+    if role == SEGMENT_DEPARTMENT_HEAD:
+        return f" AND {subject_alias}.branch = ?", [user["branch"]]
+    if role == SEGMENT_TEACHER:
+        return f" AND {subject_alias}.staff_id = ?", [user["id"]]
+    if role == SEGMENT_STUDENT:
+        return f" AND {attendance_alias}.student_id = ?", [user["student_id"]]
+    return " AND 1 = 0", []
+
+
+def get_accessible_subjects(user: dict[str, Any]) -> list[sqlite3.Row]:
+    if not has_permission(user, PERMISSION_SUBJECTS_READ):
+        return []
+
+    role = user["role"]
+    if role in {SEGMENT_SUPER_ADMIN, SEGMENT_PRINCIPAL}:
+        return query_all(
+            """
+            SELECT s.*, u.full_name AS staff_name
+            FROM subjects s
+            LEFT JOIN users u ON u.id = s.staff_id
+            WHERE s.is_active = 1
+            ORDER BY s.code ASC
+            """
+        )
+
+    if role == SEGMENT_DEPARTMENT_HEAD:
+        return query_all(
+            """
+            SELECT s.*, u.full_name AS staff_name
+            FROM subjects s
+            LEFT JOIN users u ON u.id = s.staff_id
+            WHERE s.is_active = 1 AND s.branch = ?
+            ORDER BY s.code ASC
+            """,
+            (user["branch"],),
+        )
+
+    if role == SEGMENT_STUDENT:
+        if user["branch"] is None or user["semester"] is None:
+            return []
+        return query_all(
+            """
+            SELECT s.*, u.full_name AS staff_name
+            FROM subjects s
+            LEFT JOIN users u ON u.id = s.staff_id
+            WHERE s.is_active = 1 AND s.branch = ? AND s.semester = ?
+            ORDER BY s.code ASC
+            """,
+            (user["branch"], user["semester"]),
+        )
+
+    return query_all(
+        """
+        SELECT s.*, u.full_name AS staff_name
+        FROM subjects s
+        LEFT JOIN users u ON u.id = s.staff_id
+        WHERE s.is_active = 1 AND s.staff_id = ?
+        ORDER BY s.code ASC
+        """,
+        (user["id"],),
+    )
+
+
+def get_subject_for_user(subject_id: int, user: dict[str, Any]) -> Optional[sqlite3.Row]:
+    role = user["role"]
+    if role in {SEGMENT_SUPER_ADMIN, SEGMENT_PRINCIPAL}:
+        return query_one(
+            """
+            SELECT s.*, u.full_name AS staff_name
+            FROM subjects s
+            LEFT JOIN users u ON u.id = s.staff_id
+            WHERE s.id = ? AND s.is_active = 1
+            """,
+            (subject_id,),
+        )
+
+    if role == SEGMENT_DEPARTMENT_HEAD:
+        return query_one(
+            """
+            SELECT s.*, u.full_name AS staff_name
+            FROM subjects s
+            LEFT JOIN users u ON u.id = s.staff_id
+            WHERE s.id = ? AND s.is_active = 1 AND s.branch = ?
+            """,
+            (subject_id, user["branch"]),
+        )
+
+    if role == SEGMENT_STUDENT:
+        if user["branch"] is None or user["semester"] is None:
+            return None
+        return query_one(
+            """
+            SELECT s.*, u.full_name AS staff_name
+            FROM subjects s
+            LEFT JOIN users u ON u.id = s.staff_id
+            WHERE s.id = ? AND s.is_active = 1 AND s.branch = ? AND s.semester = ?
+            """,
+            (subject_id, user["branch"], user["semester"]),
+        )
+
+    return query_one(
+        """
+        SELECT s.*, u.full_name AS staff_name
+        FROM subjects s
+        LEFT JOIN users u ON u.id = s.staff_id
+        WHERE s.id = ? AND s.is_active = 1 AND s.staff_id = ?
+        """,
+        (subject_id, user["id"]),
+    )
+
+
+def parse_embedding(raw_value: str) -> Optional[np.ndarray]:
+    if np is None:
+        return None
+
+    try:
+        values = json.loads(raw_value)
+    except (TypeError, json.JSONDecodeError):
+        return None
+
+    embedding = np.asarray(values, dtype=np.float32).reshape(-1)
+    if embedding.size < 16:
+        return None
+
+    norm = np.linalg.norm(embedding)
+    if norm == 0:
+        return None
+
+    return embedding / norm
+
+
+def validate_student_input(usn: str, full_name: str, branch: str, semester: Any) -> list[str]:
+    errors: list[str] = []
+
+    if not USN_RE.match(usn):
+        errors.append("USN must follow format: 1AB23CD456.")
+
+    if not NAME_RE.match(full_name):
+        errors.append("Student name can include letters, spaces, . and '.")
+
+    if branch not in set(get_available_branches(active_only=False)):
+        errors.append("Select a valid branch.")
+
+    parsed_semester = parse_semester(semester)
+    if parsed_semester is None:
+        errors.append("Semester must be between 1 and 8.")
+    elif not is_scope_active(branch, parsed_semester):
+        errors.append("Selected branch/semester is currently inactive.")
+
+    return errors
+
+
+def validate_staff_input(username: str, full_name: str, branch: str, password: str) -> list[str]:
+    errors: list[str] = []
+
+    if not USERNAME_RE.match(username):
+        errors.append("Username must be 3-32 chars and may include letters, digits, . _ -")
+
+    if not NAME_RE.match(full_name):
+        errors.append("Staff name can include letters, spaces, . and '.")
+
+    if branch not in set(get_available_branches(active_only=False)):
+        errors.append("Select a valid branch.")
+
+    if not PASSWORD_RE.match(password):
+        errors.append("Password must be 8+ chars with uppercase, lowercase, digit and special character.")
+
+    return errors
+
+
+def validate_subject_input(
+    code: str,
+    name: str,
+    branch: str,
+    semester: Any,
+    start_time: str,
+    end_time: str,
+) -> list[str]:
+    errors: list[str] = []
+
+    if not SUBJECT_CODE_RE.match(code):
+        errors.append("Subject code must be 4-12 uppercase letters/numbers.")
+
+    if len(name.strip()) < 2 or len(name.strip()) > 80:
+        errors.append("Subject name must be between 2 and 80 characters.")
+
+    if branch not in set(get_available_branches(active_only=False)):
+        errors.append("Select a valid branch.")
+
+    parsed_semester = parse_semester(semester)
+    if parsed_semester is None:
+        errors.append("Semester must be between 1 and 8.")
+    elif not is_scope_active(branch, parsed_semester):
+        errors.append("Selected branch/semester is currently inactive.")
+
+    start = parse_time_hhmm(start_time)
+    end = parse_time_hhmm(end_time)
+    if start is None or end is None:
+        errors.append("Start and end time must be valid HH:MM values.")
+    elif start >= end:
+        errors.append("End time must be later than start time.")
+
+    return errors
+
+
+def can_assign_segment(actor: dict[str, Any], segment: str, branch: Optional[str]) -> bool:
+    if actor["role"] == SEGMENT_SUPER_ADMIN:
+        return True
+    if actor["role"] == SEGMENT_PRINCIPAL:
+        return segment in {SEGMENT_DEPARTMENT_HEAD, SEGMENT_TEACHER, SEGMENT_STUDENT}
+    if actor["role"] == SEGMENT_DEPARTMENT_HEAD:
+        return segment in {SEGMENT_TEACHER, SEGMENT_STUDENT} and branch == actor["branch"]
+    return False
+
+
+def can_manage_user(actor: dict[str, Any], target: dict[str, Any]) -> bool:
+    if actor["role"] == SEGMENT_SUPER_ADMIN:
+        return True
+    if actor["role"] == SEGMENT_PRINCIPAL:
+        return target["role"] in {SEGMENT_DEPARTMENT_HEAD, SEGMENT_TEACHER, SEGMENT_STUDENT}
+    if actor["role"] == SEGMENT_DEPARTMENT_HEAD:
+        return target["role"] in {SEGMENT_TEACHER, SEGMENT_STUDENT} and target["branch"] == actor["branch"]
+    return False
+
+
+def count_active_super_admins() -> int:
+    row = query_one(
+        """
+        SELECT COUNT(*) AS total
+        FROM users u
+        JOIN user_segments us ON us.user_id = u.id
+        WHERE us.segment = ? AND u.is_active = 1
+        """,
+        (SEGMENT_SUPER_ADMIN,),
+    )
+    return int(row["total"]) if row else 0
+
+
+def get_visible_users(viewer: dict[str, Any]) -> list[dict[str, Any]]:
+    rows = query_all(
+        """
+        SELECT u.id, u.username, u.full_name, u.branch, u.is_active, u.created_at,
+               us.segment, us.semester, us.student_id,
+               (SELECT COUNT(*) FROM user_permissions up WHERE up.user_id = u.id) AS extra_permission_count
+        FROM users u
+        LEFT JOIN user_segments us ON us.user_id = u.id
+        ORDER BY u.created_at DESC
+        """
+    )
+    users: list[dict[str, Any]] = []
+    for row in rows:
+        segment = row["segment"] if row["segment"] in SEGMENTS else SEGMENT_TEACHER
+        item = {
+            "id": row["id"],
+            "username": row["username"],
+            "full_name": row["full_name"],
+            "branch": row["branch"],
+            "is_active": row["is_active"],
+            "created_at": row["created_at"],
+            "role": segment,
+            "role_label": role_display_name(segment),
+            "semester": row["semester"],
+            "student_id": row["student_id"],
+            "extra_permission_count": row["extra_permission_count"],
+        }
+        if viewer["role"] == SEGMENT_DEPARTMENT_HEAD and item["branch"] != viewer["branch"] and item["id"] != viewer["id"]:
+            continue
+        item["can_manage"] = can_manage_user(viewer, item)
+        users.append(item)
+    return users
+
+
+def mark_attendance(
+    subject_id: int,
+    student_id: int,
+    method: str,
+    confidence: Optional[float],
+    user: dict[str, Any],
+) -> tuple[bool, str, int]:
+    if not has_permission(user, PERMISSION_ATTENDANCE_WRITE):
+        return False, "You are not allowed to mark attendance.", 403
+
+    subject = get_subject_for_user(subject_id, user)
+    if subject is None:
+        return False, "Subject not found or inaccessible.", 404
+
+    student = query_one(
+        """
+        SELECT id, usn, full_name, branch, semester
+        FROM students
+        WHERE id = ? AND is_active = 1
+        """,
+        (student_id,),
+    )
+    if student is None:
+        return False, "Student does not exist.", 404
+
+    if student["branch"] != subject["branch"] or student["semester"] != subject["semester"]:
+        return False, "Student is not eligible for this subject.", 400
+
+    db = get_db()
+    try:
+        db.execute(
+            """
+            INSERT INTO attendance_records
+            (attendance_date, subject_id, student_id, marked_by, marked_at, method, confidence)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                today_str(),
+                subject_id,
+                student_id,
+                user["id"],
+                utc_now_str(),
+                method,
+                confidence,
+            ),
+        )
+        db.commit()
+    except sqlite3.IntegrityError:
+        return False, "Attendance already marked for today.", 409
+
+    return True, "Attendance marked successfully.", 200
+
+
+def sanitize_export_cell(value: Any) -> str:
+    if value is None:
+        return ""
+
+    text = str(value)
+    if text and text[0] in ("=", "+", "-", "@"):
+        return "'" + text
+    return text
+
+
+def resolve_report_filters(user: dict[str, Any]) -> tuple[list[sqlite3.Row], str, Optional[int], bool, bool]:
+    subjects = get_accessible_subjects(user)
+    allowed_subject_ids = {row["id"] for row in subjects}
+
+    selected_date = request.args.get("date", today_str())
+    invalid_date = False
+    try:
+        datetime.strptime(selected_date, "%Y-%m-%d")
+    except ValueError:
+        selected_date = today_str()
+        invalid_date = True
+
+    selected_subject_id = request.args.get("subject_id", type=int)
+    invalid_subject = False
+    if selected_subject_id and selected_subject_id not in allowed_subject_ids:
+        selected_subject_id = None
+        invalid_subject = True
+
+    return subjects, selected_date, selected_subject_id, invalid_date, invalid_subject
+
+
+def fetch_attendance_report_data(
+    user: dict[str, Any],
+    selected_date: str,
+    selected_subject_id: Optional[int],
+) -> tuple[list[sqlite3.Row], list[sqlite3.Row]]:
+    sql = """
+        SELECT ar.attendance_date, ar.marked_at, ar.method, ar.confidence,
+               sub.code AS subject_code, sub.name AS subject_name,
+               st.usn, st.full_name, st.branch, st.semester
+        FROM attendance_records ar
+        JOIN subjects sub ON sub.id = ar.subject_id
+        JOIN students st ON st.id = ar.student_id
+        WHERE ar.attendance_date = ?
+    """
+    params: list[Any] = [selected_date]
+    role = user["role"]
+    if role == SEGMENT_TEACHER:
+        sql += " AND sub.staff_id = ?"
+        params.append(user["id"])
+    elif role == SEGMENT_DEPARTMENT_HEAD:
+        sql += " AND sub.branch = ?"
+        params.append(user["branch"])
+    elif role == SEGMENT_STUDENT:
+        sql += " AND ar.student_id = ?"
+        params.append(user["student_id"])
+
+    if selected_subject_id is not None:
+        sql += " AND sub.id = ?"
+        params.append(selected_subject_id)
+
+    sql += " ORDER BY sub.code ASC, st.usn ASC"
+    records = query_all(sql, tuple(params))
+
+    summary_sql = """
+        SELECT sub.code AS subject_code, COUNT(*) AS total
+        FROM attendance_records ar
+        JOIN subjects sub ON sub.id = ar.subject_id
+        WHERE ar.attendance_date = ?
+    """
+    summary_params: list[Any] = [selected_date]
+    if role == SEGMENT_TEACHER:
+        summary_sql += " AND sub.staff_id = ?"
+        summary_params.append(user["id"])
+    elif role == SEGMENT_DEPARTMENT_HEAD:
+        summary_sql += " AND sub.branch = ?"
+        summary_params.append(user["branch"])
+    elif role == SEGMENT_STUDENT:
+        summary_sql += " AND ar.student_id = ?"
+        summary_params.append(user["student_id"])
+
+    if selected_subject_id is not None:
+        summary_sql += " AND sub.id = ?"
+        summary_params.append(selected_subject_id)
+
+    summary_sql += " GROUP BY sub.code ORDER BY sub.code ASC"
+    summary = query_all(summary_sql, tuple(summary_params))
+
+    return records, summary
+
+
+def dashboard_data_for_user(user: dict[str, Any]) -> tuple[list[dict[str, Any]], list[sqlite3.Row]]:
+    role = user["role"]
+
+    if role in {SEGMENT_SUPER_ADMIN, SEGMENT_PRINCIPAL}:
+        row = query_one(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM students WHERE is_active = 1) AS students,
+                (SELECT COUNT(*) FROM users u JOIN user_segments us ON us.user_id = u.id
+                 WHERE us.segment = 'teacher' AND u.is_active = 1) AS teachers,
+                (SELECT COUNT(*) FROM users u JOIN user_segments us ON us.user_id = u.id
+                 WHERE us.segment = 'department_head' AND u.is_active = 1) AS heads,
+                (SELECT COUNT(*) FROM subjects WHERE is_active = 1) AS subjects,
+                (SELECT COUNT(*) FROM attendance_records WHERE attendance_date = ?) AS today_marks
+            """,
+            (today_str(),),
+        )
+        metrics = [
+            {"label": "Active Students", "value": row["students"]},
+            {"label": "Active Teachers", "value": row["teachers"]},
+            {"label": "Department Heads", "value": row["heads"]},
+            {"label": "Active Subjects", "value": row["subjects"]},
+            {"label": "Today's Marks", "value": row["today_marks"]},
+        ]
+        recent = query_all(
+            """
+            SELECT ar.attendance_date, ar.marked_at, ar.method, ar.confidence,
+                   sub.code AS subject_code, st.usn, st.full_name
+            FROM attendance_records ar
+            JOIN subjects sub ON sub.id = ar.subject_id
+            JOIN students st ON st.id = ar.student_id
+            ORDER BY ar.marked_at DESC
+            LIMIT 12
+            """
+        )
+        return metrics, recent
+
+    if role == SEGMENT_DEPARTMENT_HEAD:
+        row = query_one(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM students WHERE is_active = 1 AND branch = ?) AS students,
+                (SELECT COUNT(*) FROM users u JOIN user_segments us ON us.user_id = u.id
+                 WHERE us.segment = 'teacher' AND u.is_active = 1 AND u.branch = ?) AS teachers,
+                (SELECT COUNT(*) FROM subjects WHERE is_active = 1 AND branch = ?) AS subjects,
+                (SELECT COUNT(*) FROM attendance_records ar
+                 JOIN subjects s ON s.id = ar.subject_id
+                 WHERE s.branch = ? AND ar.attendance_date = ?) AS today_marks
+            """,
+            (user["branch"], user["branch"], user["branch"], user["branch"], today_str()),
+        )
+        metrics = [
+            {"label": f"{user['branch']} Students", "value": row["students"]},
+            {"label": f"{user['branch']} Teachers", "value": row["teachers"]},
+            {"label": f"{user['branch']} Subjects", "value": row["subjects"]},
+            {"label": "Today's Marks", "value": row["today_marks"]},
+        ]
+        recent = query_all(
+            """
+            SELECT ar.attendance_date, ar.marked_at, ar.method, ar.confidence,
+                   sub.code AS subject_code, st.usn, st.full_name
+            FROM attendance_records ar
+            JOIN subjects sub ON sub.id = ar.subject_id
+            JOIN students st ON st.id = ar.student_id
+            WHERE sub.branch = ?
+            ORDER BY ar.marked_at DESC
+            LIMIT 12
+            """,
+            (user["branch"],),
+        )
+        return metrics, recent
+
+    if role == SEGMENT_TEACHER:
+        row = query_one(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM subjects WHERE staff_id = ? AND is_active = 1) AS subjects,
+                (SELECT COUNT(*) FROM attendance_records ar
+                 JOIN subjects s ON s.id = ar.subject_id
+                 WHERE s.staff_id = ? AND ar.attendance_date = ?) AS today_marks,
+                (SELECT COUNT(*) FROM attendance_records ar
+                 JOIN subjects s ON s.id = ar.subject_id
+                 WHERE s.staff_id = ?) AS total_marks
+            """,
+            (user["id"], user["id"], today_str(), user["id"]),
+        )
+        metrics = [
+            {"label": "Assigned Subjects", "value": row["subjects"]},
+            {"label": "Today's Marks", "value": row["today_marks"]},
+            {"label": "Total Marks", "value": row["total_marks"]},
+        ]
+        recent = query_all(
+            """
+            SELECT ar.attendance_date, ar.marked_at, ar.method, ar.confidence,
+                   sub.code AS subject_code, st.usn, st.full_name
+            FROM attendance_records ar
+            JOIN subjects sub ON sub.id = ar.subject_id
+            JOIN students st ON st.id = ar.student_id
+            WHERE sub.staff_id = ?
+            ORDER BY ar.marked_at DESC
+            LIMIT 12
+            """,
+            (user["id"],),
+        )
+        return metrics, recent
+
+    row = query_one(
+        """
+        SELECT
+            (SELECT COUNT(*) FROM subjects WHERE is_active = 1 AND branch = ? AND semester = ?) AS subjects,
+            (SELECT COUNT(*) FROM attendance_records WHERE student_id = ?) AS total_marks,
+            (SELECT COUNT(*) FROM attendance_records WHERE student_id = ? AND attendance_date = ?) AS today_marks
+        """,
+        (user["branch"], user["semester"], user["student_id"], user["student_id"], today_str()),
+    )
+    metrics = [
+        {"label": "Current Semester Subjects", "value": row["subjects"] if row else 0},
+        {"label": "Attendance Records", "value": row["total_marks"] if row else 0},
+        {"label": "Marked Today", "value": row["today_marks"] if row else 0},
+    ]
+    recent = query_all(
+        """
+        SELECT ar.attendance_date, ar.marked_at, ar.method, ar.confidence,
+               sub.code AS subject_code, st.usn, st.full_name
+        FROM attendance_records ar
+        JOIN subjects sub ON sub.id = ar.subject_id
+        JOIN students st ON st.id = ar.student_id
+        WHERE ar.student_id = ?
+        ORDER BY ar.marked_at DESC
+        LIMIT 12
+        """,
+        (user["student_id"],),
+    )
+    return metrics, recent
+
+
+def build_quick_actions(user: dict[str, Any]) -> list[dict[str, str]]:
+    actions: list[dict[str, str]] = []
+
+    def add_action(label: str, endpoint: str, permission: str, style: str, description: str) -> None:
+        if has_permission(user, permission):
+            actions.append(
+                {
+                    "label": label,
+                    "url": url_for(endpoint),
+                    "style": style,
+                    "description": description,
+                }
+            )
+
+    add_action("Access Control", "staff_page", PERMISSION_USERS_READ, "primary", "Manage accounts, segments, and privilege grants.")
+    add_action("Students", "students_page", PERMISSION_STUDENTS_READ, "outline", "Review and maintain student records.")
+    add_action("Subjects", "subjects_page", PERMISSION_SUBJECTS_READ, "ghost", "Plan and assign teaching subjects.")
+    add_action("Branch/Semester", "structure_page", PERMISSION_STRUCTURE_READ, "outline", "Control branch-semester activation matrix.")
+    add_action("Live Attendance", "attendance_live", PERMISSION_ATTENDANCE_EXECUTE, "primary", "Run real-time attendance operations.")
+    add_action("Attendance Reports", "attendance_report", PERMISSION_REPORTS_READ, "ghost", "Audit attendance and export analytics.")
+
+    return actions
+
+
+def build_role_workspace(user: dict[str, Any]) -> dict[str, Any]:
+    role = user["role"]
+    workspace: dict[str, Any] = {
+        "title": f"{user['role_label']} Workspace",
+        "subtitle": "Role-specific control center with scoped data and actions.",
+        "alerts": [],
+    }
+
+    if role == SEGMENT_SUPER_ADMIN:
+        scope_counts = query_one(
+            """
+            SELECT
+                SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) AS active_scopes,
+                SUM(CASE WHEN is_active = 0 THEN 1 ELSE 0 END) AS inactive_scopes
+            FROM branch_semesters
+            """
+        )
+        oversight = query_one(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM subjects WHERE is_active = 1 AND staff_id IS NULL) AS unassigned_subjects,
+                (SELECT COUNT(*) FROM users WHERE is_active = 0) AS disabled_accounts,
+                (SELECT COUNT(*) FROM students WHERE is_active = 1 AND id NOT IN (SELECT student_id FROM face_profiles)) AS students_without_face
+            """
+        )
+        segment_distribution = query_all(
+            """
+            SELECT us.segment, COUNT(*) AS total
+            FROM users u
+            JOIN user_segments us ON us.user_id = u.id
+            WHERE u.is_active = 1
+            GROUP BY us.segment
+            ORDER BY us.segment ASC
+            """
+        )
+        workspace.update(
+            {
+                "title": "Super Admin Command Center",
+                "subtitle": "Global governance, privilege control, and operational risk view.",
+                "governance": {
+                    "active_scopes": scope_counts["active_scopes"] if scope_counts and scope_counts["active_scopes"] is not None else 0,
+                    "inactive_scopes": scope_counts["inactive_scopes"] if scope_counts and scope_counts["inactive_scopes"] is not None else 0,
+                    "unassigned_subjects": oversight["unassigned_subjects"] if oversight else 0,
+                    "disabled_accounts": oversight["disabled_accounts"] if oversight else 0,
+                    "students_without_face": oversight["students_without_face"] if oversight else 0,
+                },
+                "segment_distribution": segment_distribution,
+            }
+        )
+        if oversight and oversight["unassigned_subjects"] > 0:
+            workspace["alerts"].append("Some active subjects are unassigned. Allocate faculty to avoid execution gaps.")
+        if oversight and oversight["students_without_face"] > 0:
+            workspace["alerts"].append("Face profile coverage is incomplete. Enrollment follow-up is required.")
+        return workspace
+
+    if role == SEGMENT_PRINCIPAL:
+        branch_health = query_all(
+            """
+            SELECT bs.branch,
+                   SUM(CASE WHEN bs.is_active = 1 THEN 1 ELSE 0 END) AS active_scopes,
+                   (SELECT COUNT(*) FROM students st WHERE st.branch = bs.branch AND st.is_active = 1) AS students,
+                   (SELECT COUNT(*) FROM subjects sub WHERE sub.branch = bs.branch AND sub.is_active = 1) AS subjects,
+                   (SELECT COUNT(*)
+                    FROM attendance_records ar
+                    JOIN subjects s ON s.id = ar.subject_id
+                    WHERE s.branch = bs.branch AND ar.attendance_date = ?) AS today_marks
+            FROM branch_semesters bs
+            GROUP BY bs.branch
+            ORDER BY bs.branch ASC
+            """,
+            (today_str(),),
+        )
+        low_activity = [row for row in branch_health if row["students"] > 0 and row["today_marks"] == 0]
+        workspace.update(
+            {
+                "title": "Principal Strategy Deck",
+                "subtitle": "Institute-wide monitoring for branch health and attendance throughput.",
+                "branch_health": branch_health,
+            }
+        )
+        for row in low_activity:
+            workspace["alerts"].append(f"{row['branch']} has active students but no marks today.")
+        return workspace
+
+    if role == SEGMENT_DEPARTMENT_HEAD:
+        semester_status = query_all(
+            """
+            SELECT bs.semester, bs.is_active,
+                   (SELECT COUNT(*) FROM students st
+                    WHERE st.branch = ? AND st.semester = bs.semester AND st.is_active = 1) AS students,
+                   (SELECT COUNT(*) FROM subjects sub
+                    WHERE sub.branch = ? AND sub.semester = bs.semester AND sub.is_active = 1) AS subjects,
+                   (SELECT COUNT(*)
+                    FROM attendance_records ar
+                    JOIN subjects s ON s.id = ar.subject_id
+                    WHERE s.branch = ? AND s.semester = bs.semester AND ar.attendance_date = ?) AS today_marks
+            FROM branch_semesters bs
+            WHERE bs.branch = ?
+            ORDER BY bs.semester ASC
+            """,
+            (user["branch"], user["branch"], user["branch"], today_str(), user["branch"]),
+        )
+        teacher_load = query_all(
+            """
+            SELECT u.full_name,
+                   (SELECT COUNT(*) FROM subjects s WHERE s.staff_id = u.id AND s.is_active = 1) AS subjects,
+                   (SELECT COUNT(*)
+                    FROM attendance_records ar
+                    JOIN subjects s ON s.id = ar.subject_id
+                    WHERE s.staff_id = u.id AND ar.attendance_date = ?) AS today_marks
+            FROM users u
+            JOIN user_segments us ON us.user_id = u.id
+            WHERE us.segment = 'teacher' AND u.is_active = 1 AND u.branch = ?
+            ORDER BY u.full_name ASC
+            """,
+            (today_str(), user["branch"]),
+        )
+        workspace.update(
+            {
+                "title": f"{user['branch']} Department Hub",
+                "subtitle": "Branch-scoped execution board for semester readiness and team load.",
+                "semester_status": semester_status,
+                "teacher_load": teacher_load,
+            }
+        )
+        inactive_semesters = [row for row in semester_status if row["is_active"] == 0 and (row["students"] > 0 or row["subjects"] > 0)]
+        if inactive_semesters:
+            workspace["alerts"].append("Inactive semester scope has linked data. Review activation policy.")
+        return workspace
+
+    if role == SEGMENT_TEACHER:
+        teaching_queue = query_all(
+            """
+            SELECT s.id, s.code, s.name, s.branch, s.semester, s.start_time, s.end_time,
+                   (SELECT COUNT(*) FROM students st WHERE st.branch = s.branch AND st.semester = s.semester AND st.is_active = 1) AS eligible_students,
+                   (SELECT COUNT(*) FROM attendance_records ar WHERE ar.subject_id = s.id AND ar.attendance_date = ?) AS today_marks
+            FROM subjects s
+            WHERE s.staff_id = ? AND s.is_active = 1
+            ORDER BY s.start_time ASC, s.code ASC
+            """,
+            (today_str(), user["id"]),
+        )
+        workspace.update(
+            {
+                "title": "Teacher Operations Console",
+                "subtitle": "Assigned subject workflow, attendance execution, and same-day output tracking.",
+                "teaching_queue": teaching_queue,
+            }
+        )
+        if not teaching_queue:
+            workspace["alerts"].append("No active subjects assigned. Contact department head for assignment.")
+        return workspace
+
+    # Student experience
+    progress = []
+    trend = []
+    if user["student_id"] is not None and user["branch"] is not None and user["semester"] is not None:
+        progress = query_all(
+            """
+            SELECT sub.code, sub.name, COUNT(ar.id) AS marks
+            FROM subjects sub
+            LEFT JOIN attendance_records ar ON ar.subject_id = sub.id AND ar.student_id = ?
+            WHERE sub.is_active = 1 AND sub.branch = ? AND sub.semester = ?
+            GROUP BY sub.id
+            ORDER BY sub.code ASC
+            """,
+            (user["student_id"], user["branch"], user["semester"]),
+        )
+        trend = query_all(
+            """
+            SELECT attendance_date, COUNT(*) AS total
+            FROM attendance_records
+            WHERE student_id = ?
+            GROUP BY attendance_date
+            ORDER BY attendance_date DESC
+            LIMIT 10
+            """,
+            (user["student_id"],),
+        )
+    workspace.update(
+        {
+            "title": "Student Progress Desk",
+            "subtitle": "Personal subject visibility and attendance history in one place.",
+            "progress": progress,
+            "trend": trend,
+        }
+    )
+    if user["student_id"] is None:
+        workspace["alerts"].append("Your account is not linked to a student profile. Contact administration.")
+    return workspace
+
+
+def dashboard_template_for_role(role: str) -> str:
+    return {
+        SEGMENT_SUPER_ADMIN: "dashboard_super_admin.html",
+        SEGMENT_PRINCIPAL: "dashboard_principal.html",
+        SEGMENT_DEPARTMENT_HEAD: "dashboard_department_head.html",
+        SEGMENT_TEACHER: "dashboard_teacher.html",
+        SEGMENT_STUDENT: "dashboard_student.html",
+    }.get(role, "dashboard_teacher.html")
+
+
+def can(permission: str) -> bool:
+    return has_permission(current_user(), permission)
+
+
+@app.context_processor
+def inject_globals() -> dict[str, Any]:
+    role_permissions_matrix = [
+        {
+            "role": segment,
+            "label": role_display_name(segment),
+            "scope": ROLE_SCOPE_DESCRIPTIONS.get(segment, ""),
+            "permissions": sorted(ROLE_PERMISSIONS.get(segment, set())),
+        }
+        for segment in SEGMENTS
+    ]
+    return {
+        "current_user": current_user(),
+        "branches": get_available_branches(active_only=True),
+        "semesters": get_available_semesters(active_only=True),
+        "today": today_str(),
+        "face_backend": face_engine.backend,
+        "segments": SEGMENTS,
+        "segment_labels": SEGMENT_LABELS,
+        "permission_labels": PERMISSION_LABELS,
+        "permission_keys": PERMISSIONS,
+        "role_permissions_matrix": role_permissions_matrix,
+        "can": can,
+    }
+
+
+@app.route("/")
+def landing() -> str:
+    if current_user():
+        return redirect(url_for("dashboard"))
+    return render_template("landing.html")
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login() -> str:
+    if current_user():
+        return redirect(url_for("dashboard"))
+
+    if request.method == "POST":
+        username = request.form.get("username", "").strip().lower()
+        password = request.form.get("password", "")
+        expected_role = request.form.get("expected_role", "").strip()
+        if not username or not password:
+            flash("Enter both username and password.", "danger")
+            return render_template("login.html")
+        if expected_role and expected_role not in SEGMENTS:
+            flash("Select a valid role segment.", "danger")
+            return render_template("login.html")
+
+        user = query_one(
+            """
+            SELECT u.id, u.username, u.full_name, u.password_hash, u.is_active,
+                   u.role AS legacy_role, us.segment
+            FROM users u
+            LEFT JOIN user_segments us ON us.user_id = u.id
+            WHERE u.username = ?
+            """,
+            (username,),
+        )
+        if user is None or user["is_active"] != 1 or not check_password_hash(user["password_hash"], password):
+            flash("Invalid credentials.", "danger")
+            return render_template("login.html")
+
+        actual_role = user["segment"]
+        if actual_role not in SEGMENTS:
+            actual_role = SEGMENT_SUPER_ADMIN if user["legacy_role"] == "admin" else SEGMENT_TEACHER
+
+        if expected_role and expected_role != actual_role:
+            flash(f"This account is mapped to {role_display_name(actual_role)}.", "warning")
+            return render_template("login.html")
+
+        session.clear()
+        session["user_id"] = user["id"]
+        flash(f"Welcome, {user['full_name']}.", "success")
+        return redirect(url_for("dashboard"))
+
+    return render_template("login.html")
+
+
+@app.route("/logout", methods=["GET", "POST"])
+def logout() -> Any:
+    session.clear()
+    flash("You have been logged out.", "info")
+    return redirect(url_for("landing"))
+
+
+@app.route("/dashboard")
+@login_required
+def dashboard() -> str:
+    user = current_user()
+    assert user is not None
+    subjects = get_accessible_subjects(user)
+    metrics, recent = dashboard_data_for_user(user)
+    workspace = build_role_workspace(user)
+    action_cards = build_quick_actions(user)
+    return render_template(
+        dashboard_template_for_role(user["role"]),
+        metrics=metrics,
+        subjects=subjects,
+        recent=recent,
+        workspace=workspace,
+        action_cards=action_cards,
+    )
+
+
+@app.route("/students")
+@permission_required(PERMISSION_STUDENTS_READ)
+def students_page() -> str:
+    user = current_user()
+    assert user is not None
+
+    sql = """
+        SELECT st.id, st.usn, st.full_name, st.branch, st.semester, st.created_at,
+               CASE WHEN fp.student_id IS NULL THEN 0 ELSE 1 END AS has_profile,
+               CASE WHEN us.student_id IS NULL THEN 0 ELSE 1 END AS has_account
+        FROM students st
+        LEFT JOIN face_profiles fp ON fp.student_id = st.id
+        LEFT JOIN user_segments us ON us.student_id = st.id
+        WHERE st.is_active = 1
+    """
+    params: list[Any] = []
+    if user["role"] == SEGMENT_TEACHER:
+        sql += """
+            AND EXISTS (
+                SELECT 1
+                FROM subjects s
+                WHERE s.staff_id = ? AND s.is_active = 1 AND s.branch = st.branch AND s.semester = st.semester
+            )
+        """
+        params.append(user["id"])
+    elif user["role"] == SEGMENT_DEPARTMENT_HEAD:
+        sql += " AND st.branch = ?"
+        params.append(user["branch"])
+    elif user["role"] == SEGMENT_STUDENT:
+        if user["student_id"] is None:
+            flash("Student account is not linked to a profile.", "warning")
+            return render_template("students.html", students=[])
+        sql += " AND st.id = ?"
+        params.append(user["student_id"])
+    sql += " ORDER BY st.created_at DESC"
+
+    students = query_all(sql, tuple(params))
+    return render_template("students.html", students=students)
+
+
+@app.route("/students/create", methods=["POST"])
+@permission_required(PERMISSION_STUDENTS_WRITE)
+def create_student() -> Any:
+    user = current_user()
+    assert user is not None
+
+    usn = request.form.get("usn", "").strip().upper()
+    full_name = normalize_name(request.form.get("full_name", ""))
+    branch = request.form.get("branch", "").strip().upper()
+    semester_raw = request.form.get("semester", "")
+    create_account = request.form.get("create_account") == "on"
+    account_password = request.form.get("account_password", "")
+
+    errors = validate_student_input(usn, full_name, branch, semester_raw)
+    semester = parse_semester(semester_raw)
+    if not can_access_branch(user, branch):
+        errors.append("You cannot create student records for this branch.")
+    if create_account and not PASSWORD_RE.match(account_password):
+        errors.append("Student account password must be strong (8+ with uppercase, lowercase, digit, special).")
+
+    if errors:
+        for error in errors:
+            flash(error, "danger")
+        return redirect(url_for("students_page"))
+
+    assert semester is not None
+    db = get_db()
+    try:
+        db.execute("BEGIN")
+        cursor = db.execute(
+            """
+            INSERT INTO students (usn, full_name, branch, semester, is_active)
+            VALUES (?, ?, ?, ?, 1)
+            """,
+            (usn, full_name, branch, semester),
+        )
+        student_id = cursor.lastrowid
+
+        if create_account:
+            username = usn.lower()
+            user_cursor = db.execute(
+                """
+                INSERT INTO users (username, password_hash, full_name, role, branch, is_active)
+                VALUES (?, ?, ?, ?, ?, 1)
+                """,
+                (username, generate_password_hash(account_password), full_name, BASE_ROLE_BY_SEGMENT[SEGMENT_STUDENT], branch),
+            )
+            db.execute(
+                """
+                INSERT INTO user_segments (user_id, segment, semester, student_id)
+                VALUES (?, ?, ?, ?)
+                """,
+                (user_cursor.lastrowid, SEGMENT_STUDENT, semester, student_id),
+            )
+
+        db.commit()
+        flash(f"Student {usn} created successfully.", "success")
+    except sqlite3.IntegrityError:
+        db.rollback()
+        flash("USN or linked account username already exists.", "danger")
+
+    return redirect(url_for("students_page"))
+
+
+@app.route("/students/<int:student_id>/delete", methods=["POST"])
+@permission_required(PERMISSION_STUDENTS_WRITE)
+def delete_student(student_id: int) -> Any:
+    user = current_user()
+    assert user is not None
+
+    student = query_one("SELECT id, usn, branch, is_active FROM students WHERE id = ?", (student_id,))
+    if student is None:
+        flash("Student not found.", "warning")
+        return redirect(url_for("students_page"))
+    if not can_access_branch(user, student["branch"]):
+        flash("You cannot modify this student's branch.", "danger")
+        return redirect(url_for("students_page"))
+    if student["is_active"] != 1:
+        flash("Student already inactive.", "info")
+        return redirect(url_for("students_page"))
+
+    db = get_db()
+    db.execute("UPDATE students SET is_active = 0 WHERE id = ?", (student_id,))
+    db.execute(
+        """
+        UPDATE users
+        SET is_active = 0
+        WHERE id IN (SELECT user_id FROM user_segments WHERE student_id = ?)
+        """,
+        (student_id,),
+    )
+    db.commit()
+    flash(f"Student {student['usn']} deactivated.", "info")
+    return redirect(url_for("students_page"))
+
+
+@app.route("/api/students/<int:student_id>/face-profile", methods=["POST"])
+@permission_required(PERMISSION_STUDENTS_WRITE)
+def save_face_profile(student_id: int) -> Any:
+    user = current_user()
+    assert user is not None
+
+    student = query_one("SELECT id, usn, branch FROM students WHERE id = ? AND is_active = 1", (student_id,))
+    if student is None:
+        return jsonify({"status": "error", "message": "Student not found."}), 404
+    if not can_access_branch(user, student["branch"]):
+        return jsonify({"status": "error", "message": "You cannot modify this student profile."}), 403
+
+    payload = request.get_json(silent=True) or {}
+    image_data = payload.get("image_data", "")
+
+    try:
+        image = face_engine.decode_data_url(image_data)
+    except ValueError as exc:
+        return jsonify({"status": "error", "message": str(exc)}), 400
+
+    embedding, error_message = face_engine.extract_embedding(image)
+    if error_message:
+        return jsonify({"status": "error", "message": error_message}), 422
+
+    serialized = json.dumps(embedding.tolist())
+    now = utc_now_str()
+    db = get_db()
+    db.execute(
+        """
+        INSERT INTO face_profiles (student_id, embedding, backend, updated_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(student_id)
+        DO UPDATE SET embedding = excluded.embedding,
+                      backend = excluded.backend,
+                      updated_at = excluded.updated_at
+        """,
+        (student_id, serialized, face_engine.backend, now),
+    )
+    db.commit()
+
+    return jsonify(
+        {
+            "status": "ok",
+            "message": f"Face profile updated for {student['usn']}.",
+            "backend": face_engine.backend,
+        }
+    )
+
+
+@app.route("/staff")
+@permission_required(PERMISSION_USERS_READ)
+def staff_page() -> str:
+    user = current_user()
+    assert user is not None
+    staff_members = get_visible_users(user)
+    return render_template("staff.html", staff_members=staff_members)
+
+
+@app.route("/staff/create", methods=["POST"])
+@permission_required(PERMISSION_USERS_WRITE)
+def create_staff() -> Any:
+    actor = current_user()
+    assert actor is not None
+
+    segment = request.form.get("segment", SEGMENT_TEACHER).strip()
+    username = request.form.get("username", "").strip().lower()
+    full_name = normalize_name(request.form.get("full_name", ""))
+    branch = request.form.get("branch", "").strip().upper()
+    password = request.form.get("password", "")
+    student_usn = request.form.get("student_usn", "").strip().upper()
+
+    errors: list[str] = []
+    if segment not in SEGMENTS:
+        errors.append("Invalid role segment.")
+
+    linked_student = None
+    semester: Optional[int] = None
+
+    if segment == SEGMENT_STUDENT:
+        if not USN_RE.match(student_usn):
+            errors.append("Provide a valid student USN for student accounts.")
+        else:
+            linked_student = query_one(
+                """
+                SELECT id, usn, full_name, branch, semester
+                FROM students
+                WHERE usn = ? AND is_active = 1
+                """,
+                (student_usn,),
+            )
+            if linked_student is None:
+                errors.append("Student profile not found for the given USN.")
+            else:
+                existing_link = query_one("SELECT user_id FROM user_segments WHERE student_id = ?", (linked_student["id"],))
+                if existing_link is not None:
+                    errors.append("A user account already exists for this student.")
+                branch = linked_student["branch"]
+                semester = linked_student["semester"]
+                if not full_name:
+                    full_name = linked_student["full_name"]
+                if not username:
+                    username = linked_student["usn"].lower()
+    else:
+        if segment in SEGMENTS_WITH_BRANCH:
+            if branch not in set(get_available_branches(active_only=False)):
+                errors.append("Select a valid branch.")
+        else:
+            branch = ""
+
+    if not username or not USERNAME_RE.match(username):
+        errors.append("Username must be 3-32 chars and may include letters, digits, . _ -")
+    if not NAME_RE.match(full_name):
+        errors.append("Full name can include letters, spaces, . and '.")
+    if not PASSWORD_RE.match(password):
+        errors.append("Password must be 8+ chars with uppercase, lowercase, digit and special character.")
+    if segment in SEGMENTS and not can_assign_segment(actor, segment, branch if branch else None):
+        errors.append("You are not allowed to create this role for the selected scope.")
+
+    if errors:
+        for error in errors:
+            flash(error, "danger")
+        return redirect(url_for("staff_page"))
+
+    base_role = BASE_ROLE_BY_SEGMENT[segment]
+    db = get_db()
+    try:
+        db.execute("BEGIN")
+        cursor = db.execute(
+            """
+            INSERT INTO users (username, password_hash, full_name, role, branch, is_active)
+            VALUES (?, ?, ?, ?, ?, 1)
+            """,
+            (username, generate_password_hash(password), full_name, base_role, branch if branch else None),
+        )
+        db.execute(
+            """
+            INSERT INTO user_segments (user_id, segment, semester, student_id)
+            VALUES (?, ?, ?, ?)
+            """,
+            (cursor.lastrowid, segment, semester, linked_student["id"] if linked_student else None),
+        )
+        db.commit()
+        flash(f"Account {username} created as {role_display_name(segment)}.", "success")
+    except sqlite3.IntegrityError:
+        db.rollback()
+        flash("Username already exists.", "danger")
+
+    return redirect(url_for("staff_page"))
+
+
+@app.route("/staff/<int:staff_id>/toggle-active", methods=["POST"])
+@permission_required(PERMISSION_USERS_WRITE)
+def toggle_staff_active(staff_id: int) -> Any:
+    actor = current_user()
+    assert actor is not None
+
+    target_row = query_one(
+        """
+        SELECT u.id, u.username, u.branch, u.is_active, us.segment
+        FROM users u
+        LEFT JOIN user_segments us ON us.user_id = u.id
+        WHERE u.id = ?
+        """,
+        (staff_id,),
+    )
+    if target_row is None:
+        flash("Account not found.", "warning")
+        return redirect(url_for("staff_page"))
+
+    target = {
+        "id": target_row["id"],
+        "username": target_row["username"],
+        "branch": target_row["branch"],
+        "is_active": target_row["is_active"],
+        "role": target_row["segment"] if target_row["segment"] in SEGMENTS else SEGMENT_TEACHER,
+    }
+
+    if staff_id == actor["id"] and target["is_active"] == 1:
+        flash("You cannot deactivate your own account.", "danger")
+        return redirect(url_for("staff_page"))
+    if not can_manage_user(actor, target):
+        flash("You cannot modify this account.", "danger")
+        return redirect(url_for("staff_page"))
+
+    new_state = 0 if target["is_active"] == 1 else 1
+    if target["role"] == SEGMENT_SUPER_ADMIN and new_state == 0 and count_active_super_admins() <= 1:
+        flash("At least one active super admin is required.", "danger")
+        return redirect(url_for("staff_page"))
+
+    db = get_db()
+    db.execute("UPDATE users SET is_active = ? WHERE id = ?", (new_state, staff_id))
+    db.commit()
+
+    flash("Account status updated.", "info")
+    return redirect(url_for("staff_page"))
+
+
+@app.route("/staff/<int:staff_id>/grant", methods=["POST"])
+@permission_required(PERMISSION_USERS_GRANT)
+def grant_permission(staff_id: int) -> Any:
+    actor = current_user()
+    assert actor is not None
+
+    permission = request.form.get("permission", "").strip()
+    if permission not in PERMISSIONS:
+        flash("Invalid permission key.", "danger")
+        return redirect(url_for("staff_page"))
+
+    target = query_one("SELECT id FROM users WHERE id = ?", (staff_id,))
+    if target is None:
+        flash("Target account not found.", "warning")
+        return redirect(url_for("staff_page"))
+
+    db = get_db()
+    db.execute(
+        """
+        INSERT INTO user_permissions (user_id, permission, granted_by)
+        VALUES (?, ?, ?)
+        ON CONFLICT(user_id, permission) DO NOTHING
+        """,
+        (staff_id, permission, actor["id"]),
+    )
+    db.commit()
+    flash(f"Permission '{permission}' granted.", "success")
+    return redirect(url_for("staff_page"))
+
+
+@app.route("/staff/<int:staff_id>/revoke", methods=["POST"])
+@permission_required(PERMISSION_USERS_GRANT)
+def revoke_permission(staff_id: int) -> Any:
+    permission = request.form.get("permission", "").strip()
+    if permission not in PERMISSIONS:
+        flash("Invalid permission key.", "danger")
+        return redirect(url_for("staff_page"))
+
+    db = get_db()
+    result = db.execute("DELETE FROM user_permissions WHERE user_id = ? AND permission = ?", (staff_id, permission))
+    db.commit()
+    if result.rowcount == 0:
+        flash("Permission grant was not present.", "info")
+    else:
+        flash(f"Permission '{permission}' revoked.", "info")
+    return redirect(url_for("staff_page"))
+
+
+@app.route("/subjects")
+@permission_required(PERMISSION_SUBJECTS_READ)
+def subjects_page() -> str:
+    user = current_user()
+    assert user is not None
+
+    subjects = get_accessible_subjects(user)
+    staff_sql = """
+        SELECT u.id, u.full_name, u.branch, us.segment
+        FROM users u
+        JOIN user_segments us ON us.user_id = u.id
+        WHERE u.is_active = 1 AND us.segment IN ('teacher', 'department_head')
+    """
+    params: list[Any] = []
+    if user["role"] == SEGMENT_DEPARTMENT_HEAD:
+        staff_sql += " AND u.branch = ?"
+        params.append(user["branch"])
+    staff_sql += " ORDER BY u.full_name ASC"
+    staff_members = query_all(staff_sql, tuple(params))
+    return render_template("subjects.html", subjects=subjects, staff_members=staff_members)
+
+
+@app.route("/subjects/create", methods=["POST"])
+@permission_required(PERMISSION_SUBJECTS_WRITE)
+def create_subject() -> Any:
+    actor = current_user()
+    assert actor is not None
+
+    code = request.form.get("code", "").strip().upper()
+    name = normalize_name(request.form.get("name", ""))
+    branch = request.form.get("branch", "").strip().upper()
+    semester_raw = request.form.get("semester", "")
+    start_time_raw = request.form.get("start_time", "")
+    end_time_raw = request.form.get("end_time", "")
+    staff_id_raw = request.form.get("staff_id", "")
+
+    errors = validate_subject_input(code, name, branch, semester_raw, start_time_raw, end_time_raw)
+    if not can_access_branch(actor, branch):
+        errors.append("You cannot create subjects for this branch.")
+
+    staff_id: Optional[int] = None
+    if staff_id_raw:
+        try:
+            staff_id = int(staff_id_raw)
+        except ValueError:
+            errors.append("Invalid staff selection.")
+
+    semester = parse_semester(semester_raw)
+    start_time = parse_time_hhmm(start_time_raw)
+    end_time = parse_time_hhmm(end_time_raw)
+
+    if staff_id is not None:
+        staff_member = query_one(
+            """
+            SELECT u.id, u.branch, u.is_active, us.segment
+            FROM users u
+            JOIN user_segments us ON us.user_id = u.id
+            WHERE u.id = ?
+            """,
+            (staff_id,),
+        )
+        if staff_member is None or staff_member["is_active"] != 1:
+            errors.append("Selected user account is not active.")
+        elif staff_member["segment"] not in {SEGMENT_TEACHER, SEGMENT_DEPARTMENT_HEAD}:
+            errors.append("Subject can only be assigned to teacher/department head accounts.")
+        elif staff_member["branch"] != branch:
+            errors.append("Assigned faculty branch must match subject branch.")
+
+    if errors:
+        for error in errors:
+            flash(error, "danger")
+        return redirect(url_for("subjects_page"))
+
+    db = get_db()
+    try:
+        db.execute(
+            """
+            INSERT INTO subjects (code, name, branch, semester, staff_id, start_time, end_time, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+            """,
+            (code, name, branch, semester, staff_id, start_time, end_time),
+        )
+        db.commit()
+        flash(f"Subject {code} created.", "success")
+    except sqlite3.IntegrityError:
+        flash("Subject code already exists.", "danger")
+
+    return redirect(url_for("subjects_page"))
+
+
+@app.route("/subjects/<int:subject_id>/delete", methods=["POST"])
+@permission_required(PERMISSION_SUBJECTS_WRITE)
+def delete_subject(subject_id: int) -> Any:
+    user = current_user()
+    assert user is not None
+    subject = get_subject_for_user(subject_id, user)
+    if subject is None:
+        flash("Subject not found or inaccessible.", "warning")
+        return redirect(url_for("subjects_page"))
+
+    db = get_db()
+    result = db.execute("UPDATE subjects SET is_active = 0 WHERE id = ? AND is_active = 1", (subject_id,))
+    db.commit()
+
+    if result.rowcount == 0:
+        flash("Subject already inactive.", "info")
+    else:
+        flash("Subject deactivated.", "info")
+
+    return redirect(url_for("subjects_page"))
+
+
+@app.route("/structure")
+@permission_required(PERMISSION_STRUCTURE_READ)
+def structure_page() -> str:
+    scopes = query_all(
+        """
+        SELECT bs.id, bs.branch, bs.semester, bs.is_active,
+               (SELECT COUNT(*) FROM students st WHERE st.branch = bs.branch AND st.semester = bs.semester AND st.is_active = 1) AS students,
+               (SELECT COUNT(*) FROM subjects sub WHERE sub.branch = bs.branch AND sub.semester = bs.semester AND sub.is_active = 1) AS subjects
+        FROM branch_semesters bs
+        ORDER BY bs.branch ASC, bs.semester ASC
+        """
+    )
+    return render_template("structure.html", scopes=scopes)
+
+
+@app.route("/structure/create", methods=["POST"])
+@permission_required(PERMISSION_STRUCTURE_WRITE)
+def create_structure_scope() -> Any:
+    actor = current_user()
+    assert actor is not None
+
+    branch = request.form.get("branch", "").strip().upper()
+    semester_raw = request.form.get("semester", "")
+    semester = parse_semester(semester_raw)
+    if not BRANCH_RE.match(branch):
+        flash("Branch must be 2-16 uppercase letters/digits/underscore.", "danger")
+        return redirect(url_for("structure_page"))
+    if semester is None:
+        flash("Semester must be between 1 and 8.", "danger")
+        return redirect(url_for("structure_page"))
+    if actor["role"] == SEGMENT_DEPARTMENT_HEAD and actor["branch"] != branch:
+        flash("Department heads can manage only their own branch scopes.", "danger")
+        return redirect(url_for("structure_page"))
+
+    db = get_db()
+    db.execute(
+        """
+        INSERT INTO branch_semesters (branch, semester, is_active, created_by)
+        VALUES (?, ?, 1, ?)
+        ON CONFLICT(branch, semester) DO UPDATE SET is_active = 1
+        """,
+        (branch, semester, actor["id"]),
+    )
+    db.commit()
+    flash("Branch/semester scope saved and activated.", "success")
+    return redirect(url_for("structure_page"))
+
+
+@app.route("/structure/<int:scope_id>/toggle-active", methods=["POST"])
+@permission_required(PERMISSION_STRUCTURE_WRITE)
+def toggle_structure_scope(scope_id: int) -> Any:
+    actor = current_user()
+    assert actor is not None
+    scope = query_one("SELECT id, branch, semester, is_active FROM branch_semesters WHERE id = ?", (scope_id,))
+    if scope is None:
+        flash("Scope not found.", "warning")
+        return redirect(url_for("structure_page"))
+    if actor["role"] == SEGMENT_DEPARTMENT_HEAD and actor["branch"] != scope["branch"]:
+        flash("Department heads can manage only their own branch scopes.", "danger")
+        return redirect(url_for("structure_page"))
+
+    new_state = 0 if scope["is_active"] == 1 else 1
+    if new_state == 0:
+        linked = query_one(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM students WHERE branch = ? AND semester = ? AND is_active = 1) AS students,
+                (SELECT COUNT(*) FROM subjects WHERE branch = ? AND semester = ? AND is_active = 1) AS subjects
+            """,
+            (scope["branch"], scope["semester"], scope["branch"], scope["semester"]),
+        )
+        if linked and (linked["students"] > 0 or linked["subjects"] > 0):
+            flash("Cannot deactivate scope with active students or subjects.", "danger")
+            return redirect(url_for("structure_page"))
+
+        active_count = query_one("SELECT COUNT(*) AS total FROM branch_semesters WHERE is_active = 1")
+        if active_count and active_count["total"] <= 1:
+            flash("At least one active branch/semester scope is required.", "danger")
+            return redirect(url_for("structure_page"))
+
+    db = get_db()
+    db.execute("UPDATE branch_semesters SET is_active = ? WHERE id = ?", (new_state, scope_id))
+    db.commit()
+    flash("Scope status updated.", "info")
+    return redirect(url_for("structure_page"))
+
+
+@app.route("/attendance/live")
+@permission_required(PERMISSION_ATTENDANCE_EXECUTE)
+def attendance_live() -> str:
+    user = current_user()
+    assert user is not None
+
+    subjects = get_accessible_subjects(user)
+    selected_subject_id = request.args.get("subject_id", type=int)
+
+    selected_subject = None
+    if subjects:
+        if selected_subject_id is None:
+            selected_subject = subjects[0]
+        else:
+            selected_subject = next((subject for subject in subjects if subject["id"] == selected_subject_id), None)
+            if selected_subject is None:
+                selected_subject = subjects[0]
+    else:
+        flash("No subjects assigned yet.", "warning")
+
+    eligible_count = 0
+    marked_today = 0
+    if selected_subject is not None:
+        eligible_count_row = query_one(
+            """
+            SELECT COUNT(*) AS total
+            FROM students
+            WHERE is_active = 1 AND branch = ? AND semester = ?
+            """,
+            (selected_subject["branch"], selected_subject["semester"]),
+        )
+        marked_today_row = query_one(
+            """
+            SELECT COUNT(*) AS total
+            FROM attendance_records
+            WHERE attendance_date = ? AND subject_id = ?
+            """,
+            (today_str(), selected_subject["id"]),
+        )
+        eligible_count = eligible_count_row["total"]
+        marked_today = marked_today_row["total"]
+
+    return render_template(
+        "attendance_live.html",
+        subjects=subjects,
+        selected_subject=selected_subject,
+        eligible_count=eligible_count,
+        marked_today=marked_today,
+    )
+
+
+@app.route("/attendance/report")
+@permission_required(PERMISSION_REPORTS_READ)
+def attendance_report() -> str:
+    user = current_user()
+    assert user is not None
+
+    subjects, selected_date, selected_subject_id, invalid_date, invalid_subject = resolve_report_filters(user)
+    if invalid_date:
+        flash("Invalid date. Showing today instead.", "warning")
+    if invalid_subject:
+        flash("Selected subject is not accessible.", "warning")
+
+    records, summary = fetch_attendance_report_data(user, selected_date, selected_subject_id)
+
+    return render_template(
+        "attendance_report.html",
+        records=records,
+        summary=summary,
+        subjects=subjects,
+        selected_date=selected_date,
+        selected_subject_id=selected_subject_id,
+    )
+
+
+@app.route("/attendance/report.csv")
+@permission_required(PERMISSION_REPORTS_EXECUTE)
+def attendance_report_csv() -> Response:
+    user = current_user()
+    assert user is not None
+
+    _, selected_date, selected_subject_id, _, _ = resolve_report_filters(user)
+    records, summary = fetch_attendance_report_data(user, selected_date, selected_subject_id)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    writer.writerow(["Date", "Marked At", "Subject Code", "Subject Name", "USN", "Student Name", "Branch", "Semester", "Method", "Confidence"])
+    for row in records:
+        writer.writerow(
+            [
+                sanitize_export_cell(row["attendance_date"]),
+                sanitize_export_cell(row["marked_at"]),
+                sanitize_export_cell(row["subject_code"]),
+                sanitize_export_cell(row["subject_name"]),
+                sanitize_export_cell(row["usn"]),
+                sanitize_export_cell(row["full_name"]),
+                sanitize_export_cell(row["branch"]),
+                sanitize_export_cell(row["semester"]),
+                sanitize_export_cell(row["method"]),
+                sanitize_export_cell(row["confidence"]),
+            ]
+        )
+
+    writer.writerow([])
+    writer.writerow(["Summary"])
+    writer.writerow(["Subject Code", "Total Attendance"])
+    for row in summary:
+        writer.writerow([sanitize_export_cell(row["subject_code"]), sanitize_export_cell(row["total"])])
+
+    csv_content = "\ufeff" + output.getvalue()
+    filename = f"attendance_report_{selected_date}.csv"
+
+    return Response(
+        csv_content,
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@app.route("/attendance/report.xlsx")
+@permission_required(PERMISSION_REPORTS_EXECUTE)
+def attendance_report_xlsx() -> Any:
+    user = current_user()
+    assert user is not None
+
+    _, selected_date, selected_subject_id, _, _ = resolve_report_filters(user)
+    records, summary = fetch_attendance_report_data(user, selected_date, selected_subject_id)
+
+    if Workbook is None:
+        flash("Excel export requires openpyxl. Install dependencies and retry.", "warning")
+        params: dict[str, Any] = {"date": selected_date}
+        if selected_subject_id is not None:
+            params["subject_id"] = selected_subject_id
+        return redirect(url_for("attendance_report", **params))
+
+    workbook = Workbook()
+    details_sheet = workbook.active
+    details_sheet.title = "Attendance"
+    details_sheet.append(["Date", "Marked At", "Subject Code", "Subject Name", "USN", "Student Name", "Branch", "Semester", "Method", "Confidence"])
+
+    for row in records:
+        details_sheet.append(
+            [
+                sanitize_export_cell(row["attendance_date"]),
+                sanitize_export_cell(row["marked_at"]),
+                sanitize_export_cell(row["subject_code"]),
+                sanitize_export_cell(row["subject_name"]),
+                sanitize_export_cell(row["usn"]),
+                sanitize_export_cell(row["full_name"]),
+                sanitize_export_cell(row["branch"]),
+                sanitize_export_cell(row["semester"]),
+                sanitize_export_cell(row["method"]),
+                sanitize_export_cell(row["confidence"]),
+            ]
+        )
+
+    summary_sheet = workbook.create_sheet("Summary")
+    summary_sheet.append(["Subject Code", "Total Attendance"])
+    for row in summary:
+        summary_sheet.append([sanitize_export_cell(row["subject_code"]), sanitize_export_cell(row["total"])])
+
+    content = io.BytesIO()
+    workbook.save(content)
+    content.seek(0)
+
+    filename = f"attendance_report_{selected_date}.xlsx"
+    return Response(
+        content.getvalue(),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@app.route("/api/recognize", methods=["POST"])
+@permission_required(PERMISSION_ATTENDANCE_EXECUTE)
+def recognize_face() -> Any:
+    user = current_user()
+    assert user is not None
+
+    payload = request.get_json(silent=True) or {}
+    subject_id_raw = payload.get("subject_id")
+    image_data = payload.get("image_data", "")
+
+    try:
+        subject_id = int(subject_id_raw)
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "Invalid subject id."}), 400
+
+    subject = get_subject_for_user(subject_id, user)
+    if subject is None:
+        return jsonify({"status": "error", "message": "Subject not found or inaccessible."}), 404
+
+    try:
+        frame = face_engine.decode_data_url(image_data)
+    except ValueError as exc:
+        return jsonify({"status": "error", "message": str(exc)}), 400
+
+    probe, extract_error = face_engine.extract_embedding(frame)
+    if extract_error is not None:
+        return jsonify({"status": "error", "message": extract_error}), 422
+
+    candidates = query_all(
+        """
+        SELECT st.id, st.usn, st.full_name, fp.embedding
+        FROM students st
+        JOIN face_profiles fp ON fp.student_id = st.id
+        WHERE st.is_active = 1 AND st.branch = ? AND st.semester = ?
+        """,
+        (subject["branch"], subject["semester"]),
+    )
+
+    if not candidates:
+        return jsonify(
+            {
+                "status": "error",
+                "message": "No enrolled face profiles found for this subject.",
+            }
+        ), 404
+
+    best: Optional[tuple[sqlite3.Row, MatchResult]] = None
+    for candidate in candidates:
+        embedding = parse_embedding(candidate["embedding"])
+        if embedding is None:
+            continue
+
+        result = face_engine.compare(probe, embedding)
+        if best is None or result.score > best[1].score:
+            best = (candidate, result)
+
+    if best is None or not best[1].matched:
+        return jsonify(
+            {
+                "status": "unknown",
+                "message": "No matching student found.",
+                "backend": face_engine.backend,
+            }
+        )
+
+    candidate, result = best
+    already_marked = query_one(
+        """
+        SELECT id
+        FROM attendance_records
+        WHERE attendance_date = ? AND subject_id = ? AND student_id = ?
+        """,
+        (today_str(), subject_id, candidate["id"]),
+    )
+
+    return jsonify(
+        {
+            "status": "matched",
+            "backend": face_engine.backend,
+            "student": {
+                "id": candidate["id"],
+                "usn": candidate["usn"],
+                "full_name": candidate["full_name"],
+            },
+            "confidence": round(result.confidence * 100.0, 2),
+            "already_marked": already_marked is not None,
+        }
+    )
+
+
+@app.route("/api/attendance/mark", methods=["POST"])
+@permission_required(PERMISSION_ATTENDANCE_WRITE)
+def api_mark_attendance() -> Any:
+    user = current_user()
+    assert user is not None
+
+    payload = request.get_json(silent=True) or {}
+
+    try:
+        subject_id = int(payload.get("subject_id"))
+        student_id = int(payload.get("student_id"))
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "subject_id and student_id must be integers."}), 400
+
+    method = payload.get("method", "manual")
+    if method not in {"face", "manual"}:
+        return jsonify({"status": "error", "message": "Invalid mark method."}), 400
+
+    confidence = payload.get("confidence")
+    if confidence is not None:
+        try:
+            confidence = float(confidence)
+        except (TypeError, ValueError):
+            confidence = None
+
+    success, message, status_code = mark_attendance(subject_id, student_id, method, confidence, user)
+
+    if not success:
+        return jsonify({"status": "error", "message": message}), status_code
+
+    return jsonify({"status": "ok", "message": message}), status_code
+
+
+@app.route("/api/attendance/manual", methods=["POST"])
+@permission_required(PERMISSION_ATTENDANCE_WRITE)
+def api_manual_attendance() -> Any:
+    user = current_user()
+    assert user is not None
+
+    payload = request.get_json(silent=True) or {}
+    usn = payload.get("usn", "").strip().upper()
+
+    try:
+        subject_id = int(payload.get("subject_id"))
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "Invalid subject id."}), 400
+
+    if not USN_RE.match(usn):
+        return jsonify({"status": "error", "message": "USN format is invalid."}), 400
+
+    student = query_one("SELECT id FROM students WHERE usn = ? AND is_active = 1", (usn,))
+    if student is None:
+        return jsonify({"status": "error", "message": "Student not found."}), 404
+
+    success, message, status_code = mark_attendance(subject_id, student["id"], "manual", None, user)
+    if not success:
+        return jsonify({"status": "error", "message": message}), status_code
+
+    return jsonify({"status": "ok", "message": message}), status_code
+
+
+@app.route("/health")
+def health() -> Any:
+    return jsonify(
+        {
+            "status": "ok",
+            "face_backend": face_engine.backend,
+            "date": today_str(),
+        }
+    )
+
+
+@app.errorhandler(404)
+def not_found(_: Any) -> tuple[str, int]:
+    return render_template("error.html", message="Page not found."), 404
+
+
+@app.errorhandler(500)
+def internal_error(_: Any) -> tuple[str, int]:
+    return render_template("error.html", message="Unexpected server error."), 500
+
+
+with app.app_context():
+    init_db()
+
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)

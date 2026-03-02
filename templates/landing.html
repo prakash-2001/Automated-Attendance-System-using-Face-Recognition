@@ -1,0 +1,35 @@
+﻿{% extends "base.html" %}
+{% block title %}Automated Attendance System{% endblock %}
+
+{% block content %}
+<section class="hero reveal">
+    <div class="hero-copy">
+        <p class="eyebrow">Low-Latency | Edge-Ready | Face Recognition</p>
+        <h1>Automated Attendance System Using Face Recognition</h1>
+        <p class="lead">
+            A fast, resilient attendance platform built for low-end devices, with secure role access,
+            real-time camera capture, manual fallback, and strict edge-case handling.
+        </p>
+        <div class="hero-actions">
+            <a href="{{ url_for('login') }}" class="btn btn-primary">Login</a>
+            <a href="{{ url_for('health') }}" class="btn btn-ghost">System Health</a>
+        </div>
+        <p class="sub-note">Default admin: <code>admin</code> | password: <code>Admin@123</code></p>
+    </div>
+
+    <div class="hero-panel">
+        <div class="metric-card floaty">
+            <h3>Face Engine</h3>
+            <p>{{ face_backend }}</p>
+        </div>
+        <div class="metric-card floaty delay-1">
+            <h3>Storage</h3>
+            <p>SQLite local-first</p>
+        </div>
+        <div class="metric-card floaty delay-2">
+            <h3>Design</h3>
+            <p>Animated and responsive</p>
+        </div>
+    </div>
+</section>
+{% endblock %}

@@ -1,0 +1,10 @@
+﻿{% extends "base.html" %}
+{% block title %}Error | Face Attendance{% endblock %}
+
+{% block content %}
+<section class="panel reveal">
+    <h1>Something went wrong</h1>
+    <p class="empty-state">{{ message }}</p>
+    <a class="btn btn-primary" href="{{ url_for('dashboard') if current_user else url_for('landing') }}">Go Back</a>
+</section>
+{% endblock %}

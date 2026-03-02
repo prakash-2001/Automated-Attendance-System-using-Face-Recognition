@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}Access Control | Face Attendance{% endblock %}
+
+{% block content %}
+<section class="split-layout reveal">
+    {% if can('users.write') %}
+    <article class="panel form-panel">
+        <header class="panel-head">
+            <h2>Create Account</h2>
+        </header>
+        <form action="{{ url_for('create_staff') }}" method="post" class="form-grid">
+            <label>
+                Role Segment
+                <select name="segment" required>
+                    {% for segment in segments %}
+                    <option value="{{ segment }}">{{ segment_labels[segment] }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>
+                Username
+                <input type="text" name="username" placeholder="teacher01 or student USN" maxlength="32" />
+            </label>
+            <label>
+                Full Name
+                <input type="text" name="full_name" placeholder="Display name" required maxlength="80" />
+            </label>
+            <label>
+                Branch
+                <select name="branch">
+                    <option value="">No Branch</option>
+                    {% for branch in branches %}
+                    <option value="{{ branch }}">{{ branch }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>
+                Student USN (for Student segment)
+                <input type="text" name="student_usn" placeholder="1AB23CD456" maxlength="10" />
+            </label>
+            <label>
+                Password
+                <input type="password" name="password" placeholder="Strong password" required minlength="8" maxlength="64" />
+            </label>
+            <button type="submit" class="btn btn-primary">Create Account</button>
+        </form>
+    </article>
+    {% endif %}
+
+    <article class="panel {% if not can('users.write') %}panel-wide{% endif %}">
+        <header class="panel-head">
+            <h2>Accounts & Privileges</h2>
+        </header>
+        <div class="table-scroll">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>Name</th>
+                        <th>Role</th>
+                        <th>Branch</th>
+                        <th>Status</th>
+                        <th>Custom Perms</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for member in staff_members %}
+                    <tr>
+                        <td>{{ member.username }}</td>
+                        <td>{{ member.full_name }}</td>
+                        <td>{{ member.role_label }}</td>
+                        <td>{{ member.branch or '-' }}</td>
+                        <td>
+                            {% if member.is_active %}
+                                <span class="chip chip-ok">Active</span>
+                            {% else %}
+                                <span class="chip chip-neutral">Disabled</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ member.extra_permission_count }}</td>
+                        <td class="actions">
+                            {% if can('users.write') and member.can_manage %}
+                            <form action="{{ url_for('toggle_staff_active', staff_id=member.id) }}" method="post">
+                                <button type="submit" class="btn btn-small btn-ghost">
+                                    {% if member.is_active %}Deactivate{% else %}Activate{% endif %}
+                                </button>
+                            </form>
+                            {% endif %}
+
+                            {% if can('users.grant') %}
+                            <form action="{{ url_for('grant_permission', staff_id=member.id) }}" method="post" class="inline-form">
+                                <select name="permission" required>
+                                    {% for permission in permission_keys %}
+                                    <option value="{{ permission }}">{{ permission_labels[permission] }}</option>
+                                    {% endfor %}
+                                </select>
+                                <button type="submit" class="btn btn-small btn-outline">Grant</button>
+                            </form>
+                            <form action="{{ url_for('revoke_permission', staff_id=member.id) }}" method="post" class="inline-form">
+                                <select name="permission" required>
+                                    {% for permission in permission_keys %}
+                                    <option value="{{ permission }}">{{ permission_labels[permission] }}</option>
+                                    {% endfor %}
+                                </select>
+                                <button type="submit" class="btn btn-small btn-danger">Revoke</button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="7" class="empty-state">No accounts found.</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </article>
+</section>
+
+<section class="panel reveal delay-1">
+    <header class="panel-head">
+        <h2>Default Role Access Matrix</h2>
+    </header>
+    <div class="table-scroll">
+        <table>
+            <thead>
+                <tr>
+                    <th>Role Segment</th>
+                    <th>Scope</th>
+                    <th>Permissions</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for row in role_permissions_matrix %}
+                <tr>
+                    <td>{{ row.label }}</td>
+                    <td>{{ row.scope }}</td>
+                    <td>
+                        <div class="tags-wrap">
+                            {% for permission in row.permissions %}
+                            <span class="tag">{{ permission_labels.get(permission, permission) }}</span>
+                            {% endfor %}
+                        </div>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

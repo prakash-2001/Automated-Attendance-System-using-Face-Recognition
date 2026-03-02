@@ -1,0 +1,74 @@
+﻿{% extends "base.html" %}
+{% block title %}Dashboard | Face Attendance{% endblock %}
+
+{% block content %}
+<section class="dashboard-head reveal">
+    <div>
+        <h1>Dashboard</h1>
+        <p>Today: {{ today }}</p>
+    </div>
+    {% if can('attendance.execute') %}
+    <a href="{{ url_for('attendance_live') }}" class="btn btn-primary">Open Live Attendance</a>
+    {% endif %}
+</section>
+
+<section class="kpi-grid reveal delay-1">
+    {% for card in metrics %}
+    <article class="kpi-card">
+        <h2>{{ card.value or 0 }}</h2>
+        <p>{{ card.label }}</p>
+    </article>
+    {% endfor %}
+</section>
+
+<section class="panel-grid reveal delay-2">
+    <article class="panel">
+        <header class="panel-head">
+            <h3>Accessible Subjects</h3>
+        </header>
+        <div class="tags-wrap">
+            {% if subjects %}
+                {% for subject in subjects %}
+                <span class="tag">{{ subject.code }} | {{ subject.branch }}-{{ subject.semester }}</span>
+                {% endfor %}
+            {% else %}
+                <p class="empty-state">No subjects configured yet.</p>
+            {% endif %}
+        </div>
+    </article>
+
+    <article class="panel">
+        <header class="panel-head">
+            <h3>Recent Attendance</h3>
+        </header>
+        <div class="table-scroll">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Subject</th>
+                        <th>USN</th>
+                        <th>Name</th>
+                        <th>Method</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for row in recent %}
+                    <tr>
+                        <td>{{ row.marked_at }}</td>
+                        <td>{{ row.subject_code }}</td>
+                        <td>{{ row.usn }}</td>
+                        <td>{{ row.full_name }}</td>
+                        <td>{{ row.method }}</td>
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="5" class="empty-state">No attendance marked yet.</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </article>
+</section>
+{% endblock %}

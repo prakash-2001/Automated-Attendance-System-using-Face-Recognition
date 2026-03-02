@@ -1,0 +1,103 @@
+{% macro hero(title, subtitle) -%}
+<section class="workspace-hero reveal">
+    <div>
+        <p class="eyebrow">Role Workspace</p>
+        <h1>{{ title }}</h1>
+        <p class="lead">{{ subtitle }}</p>
+    </div>
+    <div class="hero-note">
+        <span class="tag">Today: {{ today }}</span>
+        <span class="tag">Role: {{ current_user.role_label }}</span>
+    </div>
+</section>
+{%- endmacro %}
+
+{% macro quick_actions(actions) -%}
+<section class="action-grid reveal delay-1">
+    {% for action in actions %}
+    <a href="{{ action.url }}" class="action-card action-{{ action.style }}">
+        <h3>{{ action.label }}</h3>
+        <p>{{ action.description }}</p>
+    </a>
+    {% endfor %}
+</section>
+{%- endmacro %}
+
+{% macro metric_cards(metrics) -%}
+<section class="kpi-grid reveal delay-1">
+    {% for card in metrics %}
+    <article class="kpi-card">
+        <h2>{{ card.value or 0 }}</h2>
+        <p>{{ card.label }}</p>
+    </article>
+    {% endfor %}
+</section>
+{%- endmacro %}
+
+{% macro subject_tags(subjects) -%}
+<article class="panel">
+    <header class="panel-head">
+        <h3>Accessible Subjects</h3>
+    </header>
+    <div class="tags-wrap">
+        {% if subjects %}
+            {% for subject in subjects %}
+            <span class="tag">{{ subject.code }} | {{ subject.branch }}-{{ subject.semester }}</span>
+            {% endfor %}
+        {% else %}
+            <p class="empty-state">No subjects configured yet.</p>
+        {% endif %}
+    </div>
+</article>
+{%- endmacro %}
+
+{% macro recent_table(recent, title='Recent Attendance') -%}
+<article class="panel">
+    <header class="panel-head">
+        <h3>{{ title }}</h3>
+    </header>
+    <div class="table-scroll">
+        <table>
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Subject</th>
+                    <th>USN</th>
+                    <th>Name</th>
+                    <th>Method</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for row in recent %}
+                <tr>
+                    <td>{{ row.marked_at }}</td>
+                    <td>{{ row.subject_code }}</td>
+                    <td>{{ row.usn }}</td>
+                    <td>{{ row.full_name }}</td>
+                    <td>{{ row.method }}</td>
+                </tr>
+            {% else %}
+                <tr>
+                    <td colspan="5" class="empty-state">No attendance marked yet.</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</article>
+{%- endmacro %}
+
+{% macro alerts_panel(alerts) -%}
+{% if alerts %}
+<article class="panel reveal delay-2">
+    <header class="panel-head">
+        <h3>Operational Alerts</h3>
+    </header>
+    <ul class="alert-list">
+        {% for alert in alerts %}
+        <li>{{ alert }}</li>
+        {% endfor %}
+    </ul>
+</article>
+{% endif %}
+{%- endmacro %}

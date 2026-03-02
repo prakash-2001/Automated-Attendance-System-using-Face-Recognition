@@ -1,0 +1,38 @@
+﻿{% extends "base.html" %}
+{% block title %}Login | Face Attendance{% endblock %}
+
+{% block content %}
+<section class="auth-wrap reveal">
+    <div class="auth-card">
+        <h1>Sign in</h1>
+        <p>All active role accounts can sign in: super admin, principal, department head, teacher, and student.</p>
+
+        <form method="post" action="{{ url_for('login') }}" class="form-grid">
+            <label>
+                Username / USN
+                <input type="text" name="username" placeholder="teacher01 or 1ab23cd458" required autocomplete="username" />
+            </label>
+            <label>
+                Role Segment (Optional)
+                <select name="expected_role">
+                    <option value="">Auto Detect</option>
+                    {% for segment in segments %}
+                    <option value="{{ segment }}">{{ segment_labels[segment] }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>
+                Password
+                <input type="password" name="password" placeholder="••••••••" required autocomplete="current-password" />
+            </label>
+            <button type="submit" class="btn btn-primary">Sign In</button>
+        </form>
+
+        <div class="auth-role-grid">
+            {% for segment in segments %}
+            <span class="tag">{{ segment_labels[segment] }}</span>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+{% endblock %}

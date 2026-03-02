@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Branch/Semester Matrix | Face Attendance{% endblock %}
+
+{% block content %}
+<section class="split-layout reveal">
+    {% if can('structure.write') %}
+    <article class="panel form-panel">
+        <header class="panel-head">
+            <h2>Add Scope</h2>
+        </header>
+        <form action="{{ url_for('create_structure_scope') }}" method="post" class="form-grid">
+            <label>
+                Branch
+                <input type="text" name="branch" placeholder="CSE" maxlength="16" required />
+            </label>
+            <label>
+                Semester
+                <select name="semester" required>
+                    {% for sem in semesters %}
+                    <option value="{{ sem }}">{{ sem }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <button type="submit" class="btn btn-primary">Save Scope</button>
+        </form>
+    </article>
+    {% endif %}
+
+    <article class="panel {% if not can('structure.write') %}panel-wide{% endif %}">
+        <header class="panel-head">
+            <h2>Branch/Semester Scope Matrix</h2>
+        </header>
+        <div class="table-scroll">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Branch</th>
+                        <th>Semester</th>
+                        <th>Status</th>
+                        <th>Students</th>
+                        <th>Subjects</th>
+                        {% if can('structure.write') %}<th>Action</th>{% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                {% for scope in scopes %}
+                    <tr>
+                        <td>{{ scope.branch }}</td>
+                        <td>{{ scope.semester }}</td>
+                        <td>
+                            {% if scope.is_active %}
+                                <span class="chip chip-ok">Active</span>
+                            {% else %}
+                                <span class="chip chip-neutral">Inactive</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ scope.students }}</td>
+                        <td>{{ scope.subjects }}</td>
+                        {% if can('structure.write') %}
+                        <td>
+                            <form action="{{ url_for('toggle_structure_scope', scope_id=scope.id) }}" method="post">
+                                <button type="submit" class="btn btn-small btn-ghost">
+                                    {% if scope.is_active %}Deactivate{% else %}Activate{% endif %}
+                                </button>
+                            </form>
+                        </td>
+                        {% endif %}
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="{% if can('structure.write') %}6{% else %}5{% endif %}" class="empty-state">No branch/semester scopes configured.</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </article>
+</section>
+{% endblock %}

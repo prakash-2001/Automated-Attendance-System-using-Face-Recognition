@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% from "_workspace_macros.html" import hero, quick_actions, metric_cards, subject_tags, recent_table, alerts_panel with context %}
+{% block title %}Principal Workspace | Face Attendance{% endblock %}
+
+{% block content %}
+{{ hero(workspace.title, workspace.subtitle) }}
+{{ quick_actions(action_cards) }}
+{{ metric_cards(metrics) }}
+
+<section class="panel reveal delay-2">
+    <header class="panel-head">
+        <h3>Branch Performance Board</h3>
+    </header>
+    <div class="table-scroll">
+        <table>
+            <thead>
+                <tr>
+                    <th>Branch</th>
+                    <th>Active Scopes</th>
+                    <th>Students</th>
+                    <th>Subjects</th>
+                    <th>Today's Marks</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in workspace.branch_health %}
+                <tr>
+                    <td>{{ row.branch }}</td>
+                    <td>{{ row.active_scopes }}</td>
+                    <td>{{ row.students }}</td>
+                    <td>{{ row.subjects }}</td>
+                    <td>{{ row.today_marks }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5" class="empty-state">No branch health data available.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+{{ alerts_panel(workspace.alerts) }}
+
+<section class="panel-grid reveal delay-2">
+    {{ subject_tags(subjects) }}
+    {{ recent_table(recent, "Institute Activity Feed") }}
+</section>
+{% endblock %}

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% from "_workspace_macros.html" import hero, quick_actions, metric_cards, subject_tags, recent_table, alerts_panel with context %}
+{% block title %}Super Admin Workspace | Face Attendance{% endblock %}
+
+{% block content %}
+{{ hero(workspace.title, workspace.subtitle) }}
+{{ quick_actions(action_cards) }}
+{{ metric_cards(metrics) }}
+
+<section class="panel-grid reveal delay-2">
+    <article class="panel">
+        <header class="panel-head">
+            <h3>Governance Snapshot</h3>
+        </header>
+        <div class="workspace-stats">
+            <span class="tag">Active Scopes: {{ workspace.governance.active_scopes }}</span>
+            <span class="tag">Inactive Scopes: {{ workspace.governance.inactive_scopes }}</span>
+            <span class="tag">Unassigned Subjects: {{ workspace.governance.unassigned_subjects }}</span>
+            <span class="tag">Disabled Accounts: {{ workspace.governance.disabled_accounts }}</span>
+            <span class="tag">Students Missing Face: {{ workspace.governance.students_without_face }}</span>
+        </div>
+    </article>
+
+    <article class="panel">
+        <header class="panel-head">
+            <h3>Role Distribution</h3>
+        </header>
+        <div class="table-scroll">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Segment</th>
+                        <th>Active Accounts</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in workspace.segment_distribution %}
+                    <tr>
+                        <td>{{ segment_labels.get(row.segment, row.segment) }}</td>
+                        <td>{{ row.total }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="2" class="empty-state">No segment data found.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </article>
+</section>
+
+{{ alerts_panel(workspace.alerts) }}
+
+<section class="panel-grid reveal delay-2">
+    {{ subject_tags(subjects) }}
+    {{ recent_table(recent) }}
+</section>
+{% endblock %}

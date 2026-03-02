@@ -1,0 +1,138 @@
+﻿{% extends "base.html" %}
+{% block title %}Students | Face Attendance{% endblock %}
+
+{% block content %}
+<section class="split-layout reveal">
+    {% if can('students.write') %}
+    <article class="panel form-panel">
+        <header class="panel-head">
+            <h2>Add Student</h2>
+        </header>
+        <form action="{{ url_for('create_student') }}" method="post" class="form-grid">
+            <label>
+                USN
+                <input type="text" name="usn" placeholder="1AB23CD456" required maxlength="10" />
+            </label>
+            <label>
+                Full Name
+                <input type="text" name="full_name" placeholder="Student Name" required maxlength="80" />
+            </label>
+            <label>
+                Branch
+                <select name="branch" required>
+                    {% for branch in branches %}
+                    <option value="{{ branch }}">{{ branch }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>
+                Semester
+                <select name="semester" required>
+                    {% for sem in semesters %}
+                    <option value="{{ sem }}">{{ sem }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label class="check-row">
+                <input type="checkbox" name="create_account" />
+                Create student login account (username = USN)
+            </label>
+            <label>
+                Account Password
+                <input type="password" name="account_password" placeholder="Strong password (if account enabled)" minlength="8" maxlength="64" />
+            </label>
+            <button type="submit" class="btn btn-primary">Create Student</button>
+        </form>
+    </article>
+    {% endif %}
+
+    <article class="panel {% if not can('students.write') %}panel-wide{% endif %}">
+        <header class="panel-head">
+            <h2>Students</h2>
+        </header>
+        <div class="table-scroll">
+            <table>
+                <thead>
+                    <tr>
+                        <th>USN</th>
+                        <th>Name</th>
+                        <th>Branch</th>
+                        <th>Sem</th>
+                        <th>Face</th>
+                        <th>Account</th>
+                        {% if can('students.write') %}<th>Actions</th>{% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                {% for student in students %}
+                    <tr>
+                        <td>{{ student.usn }}</td>
+                        <td>{{ student.full_name }}</td>
+                        <td>{{ student.branch }}</td>
+                        <td>{{ student.semester }}</td>
+                        <td>
+                            {% if student.has_profile %}
+                                <span class="chip chip-ok">Profile Ready</span>
+                            {% else %}
+                                <span class="chip chip-warn">Missing</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if student.has_account %}
+                                <span class="chip chip-ok">Linked</span>
+                            {% else %}
+                                <span class="chip chip-neutral">No Login</span>
+                            {% endif %}
+                        </td>
+                        {% if can('students.write') %}
+                        <td class="actions">
+                            <button
+                                type="button"
+                                class="btn btn-small btn-ghost capture-face"
+                                data-student-id="{{ student.id }}"
+                                data-student-usn="{{ student.usn }}"
+                            >Capture Face</button>
+                            <form action="{{ url_for('delete_student', student_id=student.id) }}" method="post" onsubmit="return confirm('Deactivate this student?');">
+                                <button type="submit" class="btn btn-small btn-danger">Deactivate</button>
+                            </form>
+                        </td>
+                        {% endif %}
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="{% if can('students.write') %}7{% else %}6{% endif %}" class="empty-state">No students available.</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </article>
+</section>
+
+{% if can('students.write') %}
+<section id="faceModal" class="modal hidden" aria-hidden="true">
+    <div class="modal-card">
+        <header class="panel-head">
+            <h3 id="captureTitle">Capture Face</h3>
+            <button id="closeFaceModal" class="btn btn-small btn-ghost" type="button">Close</button>
+        </header>
+        <video id="captureVideo" autoplay playsinline></video>
+        <canvas id="captureCanvas" class="hidden"></canvas>
+        <div class="modal-actions">
+            <button id="startCamBtn" class="btn btn-outline" type="button">Start Camera</button>
+            <button id="saveFaceBtn" class="btn btn-primary" type="button" disabled>Capture & Save</button>
+        </div>
+        <p id="captureStatus" class="sub-note"></p>
+    </div>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if can('students.write') %}
+<script>
+    window.faceProfileEndpointTemplate = "{{ url_for('save_face_profile', student_id=0) }}";
+</script>
+<script src="{{ url_for('static', filename='js/students.js') }}"></script>
+{% endif %}
+{% endblock %}

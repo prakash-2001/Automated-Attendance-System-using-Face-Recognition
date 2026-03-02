@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% from "_workspace_macros.html" import hero, quick_actions, metric_cards, subject_tags, recent_table, alerts_panel with context %}
+{% block title %}Department Head Workspace | Face Attendance{% endblock %}
+
+{% block content %}
+{{ hero(workspace.title, workspace.subtitle) }}
+{{ quick_actions(action_cards) }}
+{{ metric_cards(metrics) }}
+
+<section class="panel-grid reveal delay-2">
+    <article class="panel">
+        <header class="panel-head">
+            <h3>Semester Readiness ({{ current_user.branch }})</h3>
+        </header>
+        <div class="table-scroll">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Semester</th>
+                        <th>Status</th>
+                        <th>Students</th>
+                        <th>Subjects</th>
+                        <th>Today's Marks</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in workspace.semester_status %}
+                    <tr>
+                        <td>{{ row.semester }}</td>
+                        <td>
+                            {% if row.is_active %}
+                                <span class="chip chip-ok">Active</span>
+                            {% else %}
+                                <span class="chip chip-neutral">Inactive</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ row.students }}</td>
+                        <td>{{ row.subjects }}</td>
+                        <td>{{ row.today_marks }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="empty-state">No semester readiness data found.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </article>
+
+    <article class="panel">
+        <header class="panel-head">
+            <h3>Teacher Load Board</h3>
+        </header>
+        <div class="table-scroll">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Teacher</th>
+                        <th>Assigned Subjects</th>
+                        <th>Today's Marks</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in workspace.teacher_load %}
+                    <tr>
+                        <td>{{ row.full_name }}</td>
+                        <td>{{ row.subjects }}</td>
+                        <td>{{ row.today_marks }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="3" class="empty-state">No teacher load data available.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </article>
+</section>
+
+{{ alerts_panel(workspace.alerts) }}
+
+<section class="panel-grid reveal delay-2">
+    {{ subject_tags(subjects) }}
+    {{ recent_table(recent, current_user.branch ~ " Activity Feed") }}
+</section>
+{% endblock %}
